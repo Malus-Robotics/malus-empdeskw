@@ -1,15 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
-// IST Time Helper
-function getISTTime() {
-  return new Date(
-    new Date().toLocaleString("en-US", {
-      timeZone: "Asia/Kolkata"
-    })
-  );
-}
-
 export async function POST(req: Request) {
 
   const { employeeId, action, timesheet, projectName, projectCode } = await req.json();
@@ -43,7 +34,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const now = getISTTime();
+    const now = new Date();
 
     await prisma.attendance.create({
       data: {
@@ -82,7 +73,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const now = getISTTime();
+    const now = new Date();
 
     await prisma.attendance.update({
       where: { id: last.id },
@@ -102,11 +93,8 @@ export async function POST(req: Request) {
     });
   }
 
-  // ================= INVALID ACTION =================
-
   return NextResponse.json({
     success: false,
     error: "Invalid action"
   });
-
 }

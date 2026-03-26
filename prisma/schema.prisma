@@ -7,31 +7,115 @@ datasource db {
 }
 
 model Employee {
-  id          String   @id @default(uuid())
-  employeeId  String   @unique
-  name        String
-  email       String   @unique
-  password    String
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  name       String
+  email      String   @unique
+  password   String?
+  department String?
+  createdAt  DateTime @default(now())
 
-  attendance  Attendance[]
+  attendance Attendance[]
+  expenses   Expense[]
+  leaves     Leave[]
 }
 
 model Attendance {
-  id          String   @id @default(uuid())
+  id         String   @id @default(uuid())
 
-  employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [employeeId])
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [employeeId])
 
   clockIn     DateTime?
   clockOut    DateTime?
-
   projectName String?
   projectCode String?
-
   timesheet   String?
 
+  createdAt DateTime @default(now())
+
+  @@index([employeeId])
+}
+
+model Expense {
+  id          String        @id @default(uuid())
+
+  employeeId  String
+  employee    Employee      @relation(fields: [employeeId], references: [employeeId])
+
+  amount      Float
+  category    String
+  description String
+  projectCode String?
+  date        DateTime      @default(now())
+  status      ExpenseStatus @default(PENDING)
+  remarks     String?
+  billUrls    String[]
+
+  submittedOn DateTime @default(now())
   createdAt   DateTime @default(now())
 
   @@index([employeeId])
+  @@index([status])
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Leave {
+  id         String      @id @default(uuid())
+
+  employeeId String
+  employee   Employee    @relation(fields: [employeeId], references: [employeeId])
+
+  type       LeaveType
+  from       DateTime
+  to         DateTime
+  days       Int
+  reason     String
+  status     LeaveStatus @default(PENDING)
+  remarks    String?
+  contactNo  String?
+
+  appliedOn DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+enum LeaveType {
+  CASUAL
+  SICK
+  EARNED
+  UNPAID
+  MATERNITY
+  PATERNITY
+  COMPENSATORY
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Project {
+  id        String        @id @default(uuid())
+  code      String        @unique
+  name      String
+  client    String?
+  status    ProjectStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+
+  @@index([status])
+}
+
+enum ProjectStatus {
+  ACTIVE
+  INACTIVE
+  COMPLETED
 }
