@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 
 interface Employee { id:string; employeeId:string; name:string; email:string; department?:string; }
 interface Project  { id:string; code:string; name:string; client?:string; status:"Active"|"Inactive"|"Completed"; createdAt:string; }
-interface BillFile { name:string; url:string; type:"image"|"pdf"; }
 interface ExpenseItem {
   id:string; employeeId:string; employeeName:string; date:string;
   description:string; category:string; projectCode:string; amount:number;
@@ -19,6 +18,9 @@ interface LeaveRecord {
   reason:string; status:"Pending"|"Approved"|"Rejected";
   appliedOn:string; remarks?:string;
 }
+interface Announcement {
+  id:string; title:string; body:string; type:string; date:string;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,8 +30,6 @@ function fmt(d:string) {
 }
 
 function normalize<T extends Record<string,any>>(obj:T): T {
-  // DB returns uppercase enums (PENDING/APPROVED/REJECTED/ACTIVE etc.)
-  // UI expects title-case. Normalize status field only.
   if(!obj.status) return obj;
   const map:Record<string,string> = {
     PENDING:"Pending",APPROVED:"Approved",REJECTED:"Rejected",
@@ -47,6 +47,13 @@ const STATUS_CFG:Record<string,{color:string;bg:string;border:string}> = {
   Rejected:  {color:"#f87171",bg:"rgba(248,113,113,0.1)", border:"rgba(248,113,113,0.2)"},
 };
 
+const ANN_TYPE_CFG:Record<string,{color:string;bg:string;border:string;label:string}> = {
+  holiday: {color:"#22d3a2",bg:"rgba(34,211,162,0.1)",  border:"rgba(34,211,162,0.2)",  label:"Holiday"},
+  alert:   {color:"#f97316",bg:"rgba(249,115,22,0.1)",  border:"rgba(249,115,22,0.2)",   label:"Alert"},
+  info:    {color:"#7c6af7",bg:"rgba(124,106,247,0.1)", border:"rgba(124,106,247,0.2)",  label:"Info"},
+  urgent:  {color:"#f87171",bg:"rgba(248,113,113,0.1)", border:"rgba(248,113,113,0.2)",  label:"Urgent"},
+};
+
 const LEAVE_COLORS:Record<string,string> = {
   CASUAL:"#7c6af7",Casual:"#7c6af7",SICK:"#f87171",Sick:"#f87171",
   EARNED:"#22d3a2",Earned:"#22d3a2",UNPAID:"#9999b5",Unpaid:"#9999b5",
@@ -54,17 +61,19 @@ const LEAVE_COLORS:Record<string,string> = {
   COMPENSATORY:"#fbbf24",Compensatory:"#fbbf24",
 };
 
+const EMPTY_ANN_FORM = { title:"", body:"", type:"info", date: new Date().toISOString().split("T")[0] };
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
   const router = useRouter();
 
   // ── Nav ──
-  const [activeNav, setActiveNav] = useState<"employees"|"projects"|"expenses"|"leaves">("employees");
+  const [activeNav, setActiveNav] = useState<"employees"|"projects"|"expenses"|"leaves"|"announcements">("employees");
 
   // ── Loading/error ──
-  const [loading, setLoading]   = useState(true);
-  const [toastMsg, setToastMsg] = useState("");
+  const [loading, setLoading]     = useState(true);
+  const [toastMsg, setToastMsg]   = useState("");
   const [toastType, setToastType] = useState<"ok"|"err">("ok");
 
   function toast(msg:string, type:"ok"|"err"="ok") {
@@ -73,63 +82,72 @@ export default function AdminPage() {
   }
 
   // ── Employees ──
-  const [employees, setEmployees]   = useState<Employee[]>([]);
-  const [empSearch, setEmpSearch]   = useState("");
-  const [showAddEmp, setShowAddEmp] = useState(false);
-  const [newEmpName, setNewEmpName] = useState("");
-  const [newEmpEmail, setNewEmpEmail] = useState("");
-  const [newEmpDept, setNewEmpDept]   = useState("");
+  const [employees, setEmployees]       = useState<Employee[]>([]);
+  const [empSearch, setEmpSearch]       = useState("");
+  const [showAddEmp, setShowAddEmp]     = useState(false);
+  const [newEmpName, setNewEmpName]     = useState("");
+  const [newEmpEmail, setNewEmpEmail]   = useState("");
+  const [newEmpDept, setNewEmpDept]     = useState("");
   const [addEmpSaving, setAddEmpSaving] = useState(false);
   const [addEmpError, setAddEmpError]   = useState("");
 
   // ── Projects ──
-  const [projects, setProjects]           = useState<Project[]>([]);
-  const [projectSearch, setProjectSearch] = useState("");
-  const [projectFilter, setProjectFilter] = useState<"All"|"Active"|"Inactive"|"Completed">("All");
-  const [showProjModal, setShowProjModal] = useState(false);
-  const [editProject, setEditProject]     = useState<Project|null>(null);
-  const [deleteProjId, setDeleteProjId]   = useState<string|null>(null);
-  const [pCode,setPCode]   = useState("");
-  const [pName,setPName]   = useState("");
+  const [projects, setProjects]               = useState<Project[]>([]);
+  const [projectSearch, setProjectSearch]     = useState("");
+  const [projectFilter, setProjectFilter]     = useState<"All"|"Active"|"Inactive"|"Completed">("All");
+  const [showProjModal, setShowProjModal]     = useState(false);
+  const [editProject, setEditProject]         = useState<Project|null>(null);
+  const [deleteProjId, setDeleteProjId]       = useState<string|null>(null);
+  const [pCode,setPCode]     = useState("");
+  const [pName,setPName]     = useState("");
   const [pClient,setPClient] = useState("");
   const [pStatus,setPStatus] = useState<"Active"|"Inactive"|"Completed">("Active");
   const [pSaving,setPSaving] = useState(false);
 
   // ── Expenses ──
-  const [expenses, setExpenses]               = useState<ExpenseItem[]>([]);
-  const [expLoading, setExpLoading]           = useState(false);
-  const [expSearch, setExpSearch]             = useState("");
-  const [expStatusFilter, setExpStatusFilter] = useState<"All"|"Pending"|"Approved"|"Rejected">("All");
-  const [expEmpFilter, setExpEmpFilter]       = useState("All");
-  const [expRemarksMap, setExpRemarksMap]     = useState<Record<string,string>>({});
-  const [expActioning, setExpActioning]       = useState<string|null>(null);
-  const [viewBillUrls, setViewBillUrls]       = useState<string[]|null>(null);
+  const [expenses, setExpenses]                   = useState<ExpenseItem[]>([]);
+  const [expLoading, setExpLoading]               = useState(false);
+  const [expSearch, setExpSearch]                 = useState("");
+  const [expStatusFilter, setExpStatusFilter]     = useState<"All"|"Pending"|"Approved"|"Rejected">("All");
+  const [expEmpFilter, setExpEmpFilter]           = useState("All");
+  const [expRemarksMap, setExpRemarksMap]         = useState<Record<string,string>>({});
+  const [expActioning, setExpActioning]           = useState<string|null>(null);
+  const [viewBillUrls, setViewBillUrls]           = useState<string[]|null>(null);
 
   // ── Leaves ──
-  const [leaves, setLeaves]                       = useState<LeaveRecord[]>([]);
-  const [leaveLoading, setLeaveLoading]           = useState(false);
-  const [leaveSearch, setLeaveSearch]             = useState("");
-  const [leaveStatusFilter, setLeaveStatusFilter] = useState<"All"|"Pending"|"Approved"|"Rejected">("All");
-  const [leaveEmpFilter, setLeaveEmpFilter]       = useState("All");
-  const [leaveRemarksMap, setLeaveRemarksMap]     = useState<Record<string,string>>({});
-  const [leaveActioning, setLeaveActioning]       = useState<string|null>(null);
+  const [leaves, setLeaves]                           = useState<LeaveRecord[]>([]);
+  const [leaveLoading, setLeaveLoading]               = useState(false);
+  const [leaveSearch, setLeaveSearch]                 = useState("");
+  const [leaveStatusFilter, setLeaveStatusFilter]     = useState<"All"|"Pending"|"Approved"|"Rejected">("All");
+  const [leaveEmpFilter, setLeaveEmpFilter]           = useState("All");
+  const [leaveRemarksMap, setLeaveRemarksMap]         = useState<Record<string,string>>({});
+  const [leaveActioning, setLeaveActioning]           = useState<string|null>(null);
 
-  // ── Init — auth check + load all data in parallel ──
+  // ── Announcements ──
+  const [announcements, setAnnouncements]       = useState<Announcement[]>([]);
+  const [annLoading, setAnnLoading]             = useState(false);
+  const [annSubmitting, setAnnSubmitting]       = useState(false);
+  const [annDeletingId, setAnnDeletingId]       = useState<string|null>(null);
+  const [annForm, setAnnForm]                   = useState(EMPTY_ANN_FORM);
+  const [showAnnForm, setShowAnnForm]           = useState(false);
+
+  // ── Init ──
   useEffect(()=>{
     async function init() {
       const r = await fetch("/api/admin/check");
       const d = await r.json();
       if(!d.authorized){ router.push("/admin/login"); return; }
 
-      const [empRes, projRes, expRes, leaveRes] = await Promise.all([
+      const [empRes, projRes, expRes, leaveRes, annRes] = await Promise.all([
         fetch("/api/admin/employees"),
         fetch("/api/admin/projects"),
         fetch("/api/admin/expenses"),
         fetch("/api/admin/leaves"),
+        fetch("/api/admin/announcement"),
       ]);
 
-      const [empData, projData, expData, leaveData] = await Promise.all([
-        empRes.json(), projRes.json(), expRes.json(), leaveRes.json(),
+      const [empData, projData, expData, leaveData, annData] = await Promise.all([
+        empRes.json(), projRes.json(), expRes.json(), leaveRes.json(), annRes.json(),
       ]);
 
       setEmployees(empData.data || []);
@@ -144,6 +162,7 @@ export default function AdminPage() {
         employeeName: l.employee?.name || l.employeeId,
         type: l.type.charAt(0) + l.type.slice(1).toLowerCase(),
       })));
+      setAnnouncements(annData.announcements || []);
       setLoading(false);
     }
     init();
@@ -170,6 +189,50 @@ export default function AdminPage() {
     setLeaveLoading(false);
   }
 
+  async function reloadAnnouncements() {
+    setAnnLoading(true);
+    try {
+      const r = await fetch("/api/admin/announcement");
+      const d = await r.json();
+      if(d.success) setAnnouncements(d.announcements||[]);
+    } catch { /* silent */ }
+    finally { setAnnLoading(false); }
+  }
+
+  async function submitAnnouncement() {
+    if(!annForm.title.trim()||!annForm.body.trim()||!annForm.date){
+      toast("Please fill in all fields","err"); return;
+    }
+    setAnnSubmitting(true);
+    try {
+      const res  = await fetch("/api/admin/announcement",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify(annForm),
+      });
+      const data = await res.json();
+      if(data.success){
+        toast("Announcement posted");
+        setAnnForm(EMPTY_ANN_FORM);
+        setShowAnnForm(false);
+        reloadAnnouncements();
+      } else { toast(data.error||"Failed to post","err"); }
+    } catch { toast("Network error","err"); }
+    finally { setAnnSubmitting(false); }
+  }
+
+  async function deleteAnnouncement(id:string) {
+    setAnnDeletingId(id);
+    try {
+      const res  = await fetch(`/api/admin/announcement?id=${id}`,{method:"DELETE"});
+      const data = await res.json();
+      if(data.success){
+        toast("Deleted");
+        setAnnouncements(prev=>prev.filter(a=>a.id!==id));
+      } else { toast(data.error||"Failed to delete","err"); }
+    } catch { toast("Network error","err"); }
+    finally { setAnnDeletingId(null); }
+  }
+
   // ── Filters ──
   const filteredEmp = employees.filter(e=>
     e.name?.toLowerCase().includes(empSearch.toLowerCase())||
@@ -185,7 +248,7 @@ export default function AdminPage() {
     return ms && mq;
   });
 
-  const uniqueExpEmp   = Array.from(new Set(expenses.map(e=>e.employeeName)));
+  const uniqueExpEmp     = Array.from(new Set(expenses.map(e=>e.employeeName)));
   const filteredExpenses = expenses.filter(e=>{
     const ms = expStatusFilter==="All" || e.status===expStatusFilter;
     const me = expEmpFilter==="All" || e.employeeName===expEmpFilter;
@@ -209,12 +272,12 @@ export default function AdminPage() {
   });
 
   // ── Stats ──
-  const activeProjects   = projects.filter(p=>p.status==="Active").length;
+  const activeProjects    = projects.filter(p=>p.status==="Active").length;
   const completedProjects = projects.filter(p=>p.status==="Completed").length;
-  const pendingExpenses  = expenses.filter(e=>e.status==="Pending").length;
-  const pendingLeaves    = leaves.filter(l=>l.status==="Pending").length;
-  const totalApprovedAmt = expenses.filter(e=>e.status==="Approved").reduce((a,e)=>a+e.amount,0);
-  const pendingExpAmt    = expenses.filter(e=>e.status==="Pending").reduce((a,e)=>a+e.amount,0);
+  const pendingExpenses   = expenses.filter(e=>e.status==="Pending").length;
+  const pendingLeaves     = leaves.filter(l=>l.status==="Pending").length;
+  const totalApprovedAmt  = expenses.filter(e=>e.status==="Approved").reduce((a,e)=>a+e.amount,0);
+  const pendingExpAmt     = expenses.filter(e=>e.status==="Pending").reduce((a,e)=>a+e.amount,0);
 
   // ── Employee CRUD ──
   async function saveEmployee() {
@@ -232,7 +295,7 @@ export default function AdminPage() {
   }
 
   // ── Project CRUD ──
-  function openNewProj()    { setEditProject(null); setPCode(""); setPName(""); setPClient(""); setPStatus("Active"); setShowProjModal(true); }
+  function openNewProj()       { setEditProject(null); setPCode(""); setPName(""); setPClient(""); setPStatus("Active"); setShowProjModal(true); }
   function openEditProj(p:Project) { setEditProject(p); setPCode(p.code); setPName(p.name); setPClient(p.client||""); setPStatus(p.status); setShowProjModal(true); }
 
   async function saveProject() {
@@ -465,6 +528,39 @@ export default function AdminPage() {
         .toast.err{background:var(--red);color:#fff;}
         .refresh-btn{display:flex;align-items:center;gap:6px;padding:0.4rem 0.9rem;border-radius:9px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);font-family:'Syne',sans-serif;font-size:0.72rem;font-weight:600;cursor:pointer;transition:all 0.18s;}
         .refresh-btn:hover{border-color:var(--border-hover);color:var(--text-secondary);}
+
+        /* ── ANNOUNCEMENT SPECIFIC ── */
+        .ann-form-card{background:var(--surface);border:1px solid var(--accent-border);border-radius:20px;padding:1.75rem;animation:slideDown 0.25s ease;}
+        @keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
+        .ann-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0.9rem;}
+        @media(max-width:640px){.ann-form-grid{grid-template-columns:1fr;}}
+        .ann-form-group{display:flex;flex-direction:column;gap:6px;}
+        .ann-form-group.full{grid-column:1/-1;}
+        .ann-form-label{font-size:0.62rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);font-family:'JetBrains Mono',monospace;}
+        .ann-form-input{background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.82rem;padding:0.75rem 1rem;border-radius:12px;outline:none;width:100%;}
+        .ann-form-input::placeholder{color:var(--text-muted);}
+        .ann-form-input:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);}
+        textarea.ann-form-input{resize:none;height:100px;line-height:1.6;}
+        .type-pills{display:flex;gap:0.5rem;flex-wrap:wrap;}
+        .type-pill{padding:5px 14px;border-radius:100px;font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:1px solid;transition:all 0.15s;opacity:0.4;}
+        .type-pill.active{opacity:1;transform:scale(1.04);}
+        .ann-form-actions{display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--border);}
+        .ann-list-wrap{display:flex;flex-direction:column;gap:0.75rem;}
+        .ann-row{display:grid;grid-template-columns:3px 1fr auto;border-radius:16px;background:var(--surface);border:1px solid var(--border);overflow:hidden;transition:border-color 0.2s;}
+        .ann-row:hover{border-color:var(--border-hover);}
+        .ann-bar{width:3px;}
+        .ann-row-body{padding:1rem 1.1rem;}
+        .ann-row-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+        .ann-row-title{font-size:0.85rem;font-weight:800;color:var(--text-primary);}
+        .ann-badge{font-family:'JetBrains Mono',monospace;font-size:0.55rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:2px 8px;border-radius:5px;border:1px solid;}
+        .ann-row-date{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--text-muted);margin-left:auto;}
+        .ann-row-text{font-size:0.77rem;color:var(--text-secondary);line-height:1.6;}
+        .ann-row-actions{display:flex;align-items:center;padding:0 1rem;}
+        .ann-list-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;}
+        .ann-list-label{font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-muted);}
+        .ann-count{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);border-radius:100px;padding:2px 10px;}
+        .skeleton{background:linear-gradient(90deg,var(--surface-2) 25%,var(--surface-3) 50%,var(--surface-2) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:12px;}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
       `}</style>
 
       {/* Toast */}
@@ -500,6 +596,12 @@ export default function AdminPage() {
             <button className={`nav-btn ${activeNav==="leaves"?"active":""}`} onClick={()=>setActiveNav("leaves")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
               Leave Requests {pendingLeaves>0&&<span className={`nb-count ${activeNav!=="leaves"?"alert":""}`}>{pendingLeaves}</span>}
+            </button>
+            <div className="sb-divider"/>
+            <div className="sb-section">Communications</div>
+            <button className={`nav-btn ${activeNav==="announcements"?"active":""}`} onClick={()=>setActiveNav("announcements")}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              Announcements <span className="nb-count">{announcements.length}</span>
             </button>
           </nav>
 
@@ -745,6 +847,115 @@ export default function AdminPage() {
                 </div>
               )}
               <div className="policy-note"><span style={{color:"var(--yellow)",fontWeight:700}}>📋 Leave Policy</span> — Sick leave requires a medical certificate for more than <strong>2 consecutive days</strong>. Casual leaves cannot be carried forward. Earned leaves accrue at <strong>1.25 days/month</strong>.</div>
+            </>)}
+
+            {/* ════ ANNOUNCEMENTS ════ */}
+            {activeNav==="announcements"&&(<>
+              <div className="page-header">
+                <div><h1 className="page-title">Announcements</h1><p className="page-subtitle">Post notices to the employee notice board</p></div>
+                <div style={{display:"flex",gap:"0.75rem"}}>
+                  <button className="refresh-btn" onClick={reloadAnnouncements} disabled={annLoading}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    {annLoading?"Refreshing…":"Refresh"}
+                  </button>
+                  <button className="btn-new" onClick={()=>setShowAnnForm(f=>!f)}>
+                    {showAnnForm
+                      ? <><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>Cancel</>
+                      : <><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="7" y1="2" x2="7" y2="12"/><line x1="2" y1="7" x2="12" y2="7"/></svg>New Announcement</>
+                    }
+                  </button>
+                </div>
+              </div>
+
+              {/* Create form */}
+              {showAnnForm&&(
+                <div className="ann-form-card">
+                  <div style={{fontSize:"0.65rem",fontWeight:700,letterSpacing:"0.14em",textTransform:"uppercase",color:"var(--text-muted)",fontFamily:"'JetBrains Mono',monospace",marginBottom:"1.25rem"}}>New Announcement</div>
+                  <div className="ann-form-grid">
+                    <div className="ann-form-group full">
+                      <label className="ann-form-label">Title</label>
+                      <input className="ann-form-input" placeholder="e.g. Holiday Notice" value={annForm.title} onChange={e=>setAnnForm(f=>({...f,title:e.target.value}))}/>
+                    </div>
+                    <div className="ann-form-group full">
+                      <label className="ann-form-label">Body</label>
+                      <textarea className="ann-form-input" placeholder="Write the announcement details…" value={annForm.body} onChange={e=>setAnnForm(f=>({...f,body:e.target.value}))}/>
+                    </div>
+                    <div className="ann-form-group">
+                      <label className="ann-form-label">Type</label>
+                      <div className="type-pills">
+                        {Object.entries(ANN_TYPE_CFG).map(([key,cfg])=>(
+                          <div
+                            key={key}
+                            className={`type-pill ${annForm.type===key?"active":""}`}
+                            style={{color:cfg.color,background:annForm.type===key?cfg.bg:"transparent",borderColor:cfg.border}}
+                            onClick={()=>setAnnForm(f=>({...f,type:key}))}
+                          >{cfg.label}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="ann-form-group">
+                      <label className="ann-form-label">Date</label>
+                      <input type="date" className="ann-form-input" value={annForm.date} onChange={e=>setAnnForm(f=>({...f,date:e.target.value}))}/>
+                    </div>
+                  </div>
+                  <div className="ann-form-actions">
+                    <button className="btn-mc" onClick={()=>{setShowAnnForm(false);setAnnForm(EMPTY_ANN_FORM);}}>Cancel</button>
+                    <button className="btn-ms" disabled={annSubmitting} onClick={submitAnnouncement}>
+                      {annSubmitting?<><span className="spinner"/> Posting…</>:"Post Announcement"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* List */}
+              <div className="ann-list-header">
+                <div className="ann-list-label">All Announcements</div>
+                {!annLoading&&<div className="ann-count">{announcements.length} total</div>}
+              </div>
+
+              {annLoading?(
+                <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+                  {[1,2,3].map(i=><div key={i} className="skeleton" style={{height:"88px"}}/>)}
+                </div>
+              ):announcements.length===0?(
+                <div className="empty-state" style={{textAlign:"center"}}>
+                  <div style={{fontSize:"1.5rem",marginBottom:"0.75rem",opacity:0.4}}>📭</div>
+                  No announcements yet. Create one above.
+                </div>
+              ):(
+                <div className="ann-list-wrap">
+                  {announcements.map(a=>{
+                    const cfg = ANN_TYPE_CFG[a.type]||ANN_TYPE_CFG.info;
+                    const fmtAnnDate = (d:string)=>new Intl.DateTimeFormat("en-IN",{day:"2-digit",month:"short",year:"numeric"}).format(new Date(d));
+                    return(
+                      <div className="ann-row" key={a.id}>
+                        <div className="ann-bar" style={{background:cfg.color}}/>
+                        <div className="ann-row-body">
+                          <div className="ann-row-top">
+                            <span className="ann-row-title">{a.title}</span>
+                            <span className="ann-badge" style={{color:cfg.color,background:cfg.bg,borderColor:cfg.border}}>{cfg.label}</span>
+                            <span className="ann-row-date">{fmtAnnDate(a.date)}</span>
+                          </div>
+                          <div className="ann-row-text">{a.body}</div>
+                        </div>
+                        <div className="ann-row-actions">
+                          <button
+                            className="btn-del"
+                            disabled={annDeletingId===a.id}
+                            onClick={()=>deleteAnnouncement(a.id)}
+                            style={{display:"flex",alignItems:"center",gap:"5px"}}
+                          >
+                            {annDeletingId===a.id
+                              ? <span className="spinner" style={{borderTopColor:"var(--red)"}}/>
+                              : <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="2 4 12 4"/><path d="M5 4V3h4v1"/><path d="M3 4l.8 8h6.4L11 4"/></svg>
+                            }
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </>)}
 
           </div>

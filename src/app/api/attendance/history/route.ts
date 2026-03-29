@@ -3,36 +3,32 @@ import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
   try {
-
     const { searchParams } = new URL(req.url);
     const employeeId = searchParams.get("employeeId");
 
     if (!employeeId) {
-      return NextResponse.json({
-        success: false,
-        error: "Employee ID required"
-      });
+      return NextResponse.json(
+        { success: false, error: "Employee ID required" },
+        { status: 400 }
+      );
     }
 
     const records = await prisma.attendance.findMany({
       where: {
         employeeId,
-        clockOut: {
-          not: null
-        }
+        clockOut: { not: null },
       },
-      orderBy: {
-        clockIn: "desc"
-      },
-      take: 20 // 🔥 increased for better dashboard
+      orderBy: { clockIn: "desc" },
+      take: 20,
     });
 
     const history = records
       .map((item) => {
+        // TypeScript knows clockOut is not null due to the where clause above,
+        // but the Prisma type is still Date | null — guard both fields explicitly
+        if (!item.clockIn || !item.clockOut) return null;
 
-        if (!item.clockOut) return null;
-
-        const clockInTime = new Date(item.clockIn);
+        const clockInTime  = new Date(item.clockIn);   // now guaranteed non-null
         const clockOutTime = new Date(item.clockOut);
 
         const durationSec = Math.floor(
@@ -44,37 +40,28 @@ export async function GET(req: Request) {
 
         return {
           date: clockInTime.toLocaleDateString(),
-
           clockIn: clockInTime.toLocaleTimeString([], {
             hour: "2-digit",
-            minute: "2-digit"
+            minute: "2-digit",
           }),
-
           clockOut: clockOutTime.toLocaleTimeString([], {
             hour: "2-digit",
-            minute: "2-digit"
+            minute: "2-digit",
           }),
-
-          duration: `${h}h ${m}m`,
-
-          // ✅ IMPORTANT FIXES
+          duration:    `${h}h ${m}m`,
           projectName: item.projectName || "No Project",
           projectCode: item.projectCode || "—",
-          timesheet: item.timesheet || "" // 🔥 THIS FIXES YOUR BUTTON
+          timesheet:   item.timesheet   || "",
         };
-
       })
       .filter(Boolean);
 
     return NextResponse.json(history);
-
   } catch (error) {
-
     console.error("History API Error:", error);
-
-    return NextResponse.json({
-      success: false,
-      error: "Internal server error"
-    });
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }

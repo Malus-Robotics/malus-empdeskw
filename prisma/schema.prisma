@@ -119,3 +119,13 @@ enum ProjectStatus {
   INACTIVE
   COMPLETED
 }
+model Announcement {
+  id        String   @id @default(uuid())
+  title     String
+  body      String
+  type      String   // "holiday" | "alert" | "info" | "urgent"
+  date      DateTime
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}

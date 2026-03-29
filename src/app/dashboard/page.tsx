@@ -9,6 +9,7 @@ interface HistoryItem {
   duration: string; projectName: string; projectCode: string; timesheet: string;
 }
 interface Project { id: string; code: string; name: string; client?: string; }
+interface Announcement { id: string; title: string; body: string; date: string; type: string; }
 
 export default function Dashboard() {
   const router = useRouter();
@@ -30,10 +31,18 @@ export default function Dashboard() {
   const [todaySessions,   setTodaySessions]    = useState(0);
   const [todayHours,      setTodayHours]       = useState("0h 0m");
 
-  // ── Load user, status, projects, history ──
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  const defaultAnnouncements: Announcement[] = [
+    { id:"1", title:"Holiday Notice", body:"Office will remain closed on 14th April 2026 on account of Dr. Ambedkar Jayanti.", date:"2026-04-10", type:"holiday" },
+    { id:"2", title:"Expense Submission Deadline", body:"All expense claims for Q1 must be submitted by 30th March 2026. Late submissions will not be processed.", date:"2026-03-20", type:"alert" },
+    { id:"3", title:"New Project Onboarding", body:"PROJ-005 Hyderabad Logistics Automation has been added. Team assignments will be shared shortly.", date:"2026-03-18", type:"info" },
+  ];
+
+  // ── Load user, status, projects, history, announcements ──
   useEffect(()=>{
     async function init() {
-      const meRes  = await fetch("/api/me").catch(()=>null);
+      const meRes = await fetch("/api/me").catch(()=>null);
       if(!meRes) return;
       const me = await meRes.json();
       if(!me.employeeId) return;
@@ -52,9 +61,27 @@ export default function Dashboard() {
       const projData = await projRes.json();
       setProjects(projData.projects||[]);
 
+      // ── Announcements: try API first, fall back to defaults ──
+      try {
+        const annRes = await fetch("/api/announcements");
+        if (annRes.ok) {
+          const annData = await annRes.json();
+          if (Array.isArray(annData.announcements) && annData.announcements.length > 0) {
+            setAnnouncements(annData.announcements);
+          } else {
+            setAnnouncements(defaultAnnouncements);
+          }
+        } else {
+          setAnnouncements(defaultAnnouncements);
+        }
+      } catch {
+        setAnnouncements(defaultAnnouncements);
+      }
+
       fetchHistory(me.employeeId);
     }
     init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
   async function fetchHistory(id: string) {
@@ -64,11 +91,9 @@ export default function Dashboard() {
       const data = await res.json();
       if(Array.isArray(data)) {
         setHistory(data);
-        // Compute today's stats
         const today = new Date().toLocaleDateString();
         const todayItems = data.filter((item:HistoryItem)=>item.date===today);
         setTodaySessions(todayItems.length);
-        // Sum durations e.g. "2h 30m"
         let totalMins = 0;
         todayItems.forEach((item:HistoryItem)=>{
           const hm = item.duration.match(/(\d+)h\s*(\d+)m/);
@@ -110,7 +135,7 @@ export default function Dashboard() {
   // ── Clock in / out ──
   async function send(action:string) {
     setLoading(true);
-    const res  = await fetch("/api/attendance",{
+    const res = await fetch("/api/attendance",{
       method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         employeeId, action, timesheet,
@@ -139,9 +164,9 @@ export default function Dashboard() {
     (p.client||"").toLowerCase().includes(projSearch.toLowerCase())
   );
 
-  const isActive   = status==="IN";
-  const recentSix  = history.slice(0,6);
-  const hasMore    = history.length > 6;
+  const isActive  = status==="IN";
+  const recentSix = history.slice(0,6);
+  const hasMore   = history.length > 6;
 
   return(
     <>
@@ -183,7 +208,6 @@ export default function Dashboard() {
         .ws-root{min-height:100vh;background:var(--bg);color:var(--text-primary);font-family:'Syne',sans-serif;position:relative;overflow-x:hidden;}
         .ws-root::before{content:'';position:fixed;top:-20%;left:-10%;width:60%;height:60%;background:radial-gradient(ellipse,rgba(124,106,247,0.06) 0%,transparent 70%);pointer-events:none;z-index:0;}
 
-        /* TOPBAR */
         .topbar{position:sticky;top:0;z-index:100;background:var(--topbar-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 2rem;height:60px;}
         .topbar-logo{font-size:1.1rem;font-weight:800;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;}
         .topbar-logo-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent-glow);}
@@ -198,7 +222,6 @@ export default function Dashboard() {
         .emp-name{font-size:0.75rem;font-weight:700;color:var(--text-primary);}
         .emp-id{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--text-muted);letter-spacing:0.06em;}
 
-        /* LAYOUT */
         .main-layout{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:2.5rem 2rem;display:grid;grid-template-columns:1fr 380px;gap:1.5rem;align-items:start;}
         @media(max-width:900px){.main-layout{grid-template-columns:1fr;}}
         .left-col{display:flex;flex-direction:column;gap:1.5rem;}
@@ -209,7 +232,6 @@ export default function Dashboard() {
         .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;position:relative;overflow:hidden;transition:border-color 0.2s;}
         .card:hover{border-color:var(--border-hover);}
 
-        /* CLOCK BUTTONS */
         .clock-btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;}
         .btn{display:flex;align-items:center;justify-content:center;gap:10px;padding:1.1rem 1.5rem;border-radius:14px;font-family:'Syne',sans-serif;font-size:0.82rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:none;outline:none;transition:all 0.2s;}
         .btn-in{background:var(--accent);color:#fff;box-shadow:0 0 30px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,0.15);}
@@ -225,7 +247,6 @@ export default function Dashboard() {
         .live-chip{display:inline-flex;align-items:center;gap:6px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:100px;padding:3px 10px;font-size:0.6rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);font-family:'JetBrains Mono',monospace;}
         .live-dot{width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse-dot 2s infinite;}
 
-        /* INPUT SECTION */
         .input-section{display:flex;flex-direction:column;gap:0.75rem;animation:fadeSlideIn 0.4s ease;}
         @keyframes fadeSlideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
         .ws-input{background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.82rem;padding:0.8rem 1rem;border-radius:12px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;width:100%;}
@@ -233,7 +254,6 @@ export default function Dashboard() {
         .ws-input:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);}
         textarea.ws-input{resize:none;height:110px;line-height:1.6;}
 
-        /* PROJECT DROPDOWN */
         .proj-dropdown-wrap{position:relative;}
         .proj-trigger{display:flex;align-items:center;justify-content:space-between;gap:0.5rem;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.82rem;padding:0.8rem 1rem;border-radius:12px;cursor:pointer;width:100%;transition:border-color 0.2s,box-shadow 0.2s;text-align:left;}
         .proj-trigger.open,.proj-trigger:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);outline:none;}
@@ -260,7 +280,6 @@ export default function Dashboard() {
         .proj-clear:hover{color:var(--text-secondary);}
         .proj-empty{padding:1.5rem;text-align:center;font-size:0.75rem;color:var(--text-muted);}
 
-        /* TIMER */
         .timer-card{background:var(--timer-bg);border:1px solid var(--timer-border);border-radius:20px;padding:1.75rem;position:relative;overflow:hidden;}
         .timer-card::before{content:'';position:absolute;top:-30%;right:-20%;width:60%;height:60%;background:radial-gradient(ellipse,var(--timer-glow) 0%,transparent 70%);pointer-events:none;}
         .timer-section-label{font-size:0.65rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:var(--timer-label);margin-bottom:0.75rem;}
@@ -270,7 +289,6 @@ export default function Dashboard() {
         .timer-meta-label{font-size:0.6rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:var(--timer-meta-label);margin-bottom:4px;}
         .timer-meta-value{font-size:0.82rem;font-weight:600;color:var(--timer-meta-val);font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
-        /* HISTORY */
         .history-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;}
         .view-all-btn{display:flex;align-items:center;gap:6px;font-family:'Syne',sans-serif;font-size:0.72rem;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:5px 12px;cursor:pointer;transition:all 0.18s;}
         .view-all-btn:hover{filter:brightness(1.1);}
@@ -287,13 +305,11 @@ export default function Dashboard() {
         .history-duration{font-family:'JetBrains Mono',monospace;font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:3px;}
         .history-code{font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;}
 
-        /* MORE SESSIONS STRIP */
         .more-strip{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:0.75rem;padding:0.7rem;border:1px dashed var(--border);border-radius:12px;cursor:pointer;transition:all 0.2s;}
         .more-strip:hover{border-color:var(--accent-border);background:var(--accent-soft);}
         .more-strip-text{font-size:0.75rem;font-weight:700;color:var(--text-muted);transition:color 0.2s;}
         .more-strip:hover .more-strip-text{color:var(--accent);}
 
-        /* STATS */
         .stats-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;}
         .stats-row{display:flex;justify-content:space-between;align-items:center;padding:0.8rem 0;}
         .stats-row+.stats-row{border-top:1px solid var(--border);}
@@ -304,6 +320,20 @@ export default function Dashboard() {
         .empty-state{padding:3rem 1.5rem;text-align:center;border:1px dashed var(--border);border-radius:16px;color:var(--text-muted);font-size:0.8rem;}
         .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle;margin-left:8px;}
         @keyframes spin{to{transform:rotate(360deg)}}
+
+        .ann-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;}
+        .ann-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;}
+        .ann-list{display:flex;flex-direction:column;gap:0.75rem;}
+        .ann-item{display:grid;grid-template-columns:3px 1fr;border-radius:13px;background:var(--surface-2);border:1px solid var(--border);overflow:hidden;transition:border-color 0.2s;}
+        .ann-item:hover{border-color:var(--border-hover);}
+        .ann-bar{width:3px;}
+        .ann-body{padding:0.85rem 1rem;}
+        .ann-top{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;}
+        .ann-title{font-size:0.82rem;font-weight:800;color:var(--text-primary);}
+        .ann-badge{font-family:'JetBrains Mono',monospace;font-size:0.55rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:2px 7px;border-radius:5px;border:1px solid;flex-shrink:0;}
+        .ann-date{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--text-muted);margin-left:auto;}
+        .ann-text{font-size:0.76rem;color:var(--text-secondary);line-height:1.6;}
+        .ann-empty{padding:2rem;text-align:center;font-size:0.78rem;color:var(--text-muted);}
       `}</style>
 
       <div className="ws-root">
@@ -348,7 +378,6 @@ export default function Dashboard() {
 
               {isActive&&(
                 <div className="input-section">
-
                   {/* Project dropdown */}
                   <div className="proj-dropdown-wrap" ref={projWrapRef}>
                     <button
@@ -455,7 +484,6 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* More sessions strip */}
               {hasMore&&(
                 <div className="more-strip" onClick={()=>router.push("/dashboard/history")}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -516,10 +544,47 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* ANNOUNCEMENTS */}
+            <div className="ann-card">
+              <div className="ann-header">
+                <div className="section-label" style={{marginBottom:0}}>Announcements</div>
+                {announcements.length>0&&(
+                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"0.6rem",color:"var(--text-muted)"}}>{announcements.length} notice{announcements.length!==1?"s":""}</span>
+                )}
+              </div>
+              {announcements.length===0?(
+                <div className="ann-empty">No announcements right now.</div>
+              ):(
+                <div className="ann-list">
+                  {announcements.map(a=>{
+                    const TYPE_CFG:{[k:string]:{color:string;bg:string;border:string;label:string}} = {
+                      holiday: {color:"#22d3a2",bg:"rgba(34,211,162,0.1)", border:"rgba(34,211,162,0.2)", label:"Holiday"},
+                      alert:   {color:"#f97316",bg:"rgba(249,115,22,0.1)", border:"rgba(249,115,22,0.2)",  label:"Alert"},
+                      info:    {color:"#7c6af7",bg:"rgba(124,106,247,0.1)",border:"rgba(124,106,247,0.2)", label:"Info"},
+                      urgent:  {color:"#f87171",bg:"rgba(248,113,113,0.1)",border:"rgba(248,113,113,0.2)", label:"Urgent"},
+                    };
+                    const cfg = TYPE_CFG[a.type]||TYPE_CFG.info;
+                    const fmtDate = (d:string)=>new Intl.DateTimeFormat("en-IN",{day:"2-digit",month:"short"}).format(new Date(d));
+                    return(
+                      <div className="ann-item" key={a.id}>
+                        <div className="ann-bar" style={{background:cfg.color}}/>
+                        <div className="ann-body">
+                          <div className="ann-top">
+                            <span className="ann-title">{a.title}</span>
+                            <span className="ann-badge" style={{color:cfg.color,background:cfg.bg,borderColor:cfg.border}}>{cfg.label}</span>
+                            <span className="ann-date">{fmtDate(a.date)}</span>
+                          </div>
+                          <div className="ann-text">{a.body}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
-
-
 
       </div>
     </>
