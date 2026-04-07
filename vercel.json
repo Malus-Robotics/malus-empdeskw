@@ -1,8 +1,12 @@
 {
- "crons": [
-   {
-     "path": "/api/report/weekly",
-     "schedule": "30 13 * * 6"
-   }
- ]
+  "crons": [
+    {
+      "path": "/api/report/weekly",
+      "schedule": "30 13 * * 6"
+    },
+    {
+      "path": "/api/cron/auto-clockout",
+      "schedule": "59 23 * * *"
+    }
+  ]
 }
