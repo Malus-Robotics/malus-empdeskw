@@ -1,0 +1,46 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+
+export async function GET(req: Request) {
+  // ✅ Skip auth in local development
+  if (process.env.NODE_ENV !== "development") {
+    const secret = req.headers.get("x-cron-secret");
+    if (secret !== process.env.CRON_SECRET) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const staleSessions = await prisma.attendance.findMany({
+    where: {
+      clockOut: null,
+      clockIn: { lt: todayStart },
+    },
+  });
+
+  if (staleSessions.length === 0) {
+    return NextResponse.json({ success: true, autoClosedSessions: 0 });
+  }
+
+  await Promise.all(
+    staleSessions.map((session) => {
+      if (!session.clockIn) return Promise.resolve();
+      const autoOut = new Date(session.clockIn);
+      autoOut.setHours(23, 59, 0, 0);
+
+      return prisma.attendance.update({
+        where: { id: session.id },
+        data: {
+          clockOut: autoOut,
+          timesheet: "Auto clock-out at midnight (system)",
+          projectName: session.projectName ?? "",
+          projectCode: session.projectCode ?? "",
+        },
+      });
+    })
+  );
+
+  return NextResponse.json({ success: true, autoClosedSessions: staleSessions.length });
+}
