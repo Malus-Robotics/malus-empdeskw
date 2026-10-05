@@ -229,8 +229,13 @@ export default function Dashboard() {
 
         .section-label{font-size:0.65rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-muted);font-family:'JetBrains Mono',monospace;margin-bottom:1.25rem;}
 
-        .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;position:relative;overflow:hidden;transition:border-color 0.2s;}
+        /* ── FIX: removed overflow:hidden so the project dropdown is never clipped.
+              The ::before glow pseudo-element is repositioned to a wrapper below. ── */
+        .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;position:relative;transition:border-color 0.2s;}
         .card:hover{border-color:var(--border-hover);}
+
+        /* Glow effect moved to a non-clipping inner element so overflow:hidden is no longer needed */
+        .card-glow::after{content:'';position:absolute;top:-30%;right:-20%;width:60%;height:60%;background:radial-gradient(ellipse,rgba(124,106,247,0.04) 0%,transparent 70%);pointer-events:none;border-radius:inherit;z-index:0;}
 
         .clock-btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;}
         .btn{display:flex;align-items:center;justify-content:center;gap:10px;padding:1.1rem 1.5rem;border-radius:14px;font-family:'Syne',sans-serif;font-size:0.82rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:none;outline:none;transition:all 0.2s;}
@@ -254,7 +259,8 @@ export default function Dashboard() {
         .ws-input:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);}
         textarea.ws-input{resize:none;height:110px;line-height:1.6;}
 
-        .proj-dropdown-wrap{position:relative;}
+        /* ── FIX: z-index elevated so dropdown layers above sibling cards ── */
+        .proj-dropdown-wrap{position:relative;z-index:200;}
         .proj-trigger{display:flex;align-items:center;justify-content:space-between;gap:0.5rem;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.82rem;padding:0.8rem 1rem;border-radius:12px;cursor:pointer;width:100%;transition:border-color 0.2s,box-shadow 0.2s;text-align:left;}
         .proj-trigger.open,.proj-trigger:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);outline:none;}
         .proj-trigger-left{display:flex;flex-direction:column;gap:2px;overflow:hidden;}
@@ -263,7 +269,10 @@ export default function Dashboard() {
         .proj-trigger-placeholder{color:var(--text-muted);}
         .proj-trigger-arrow{width:14px;height:14px;flex-shrink:0;color:var(--text-muted);transition:transform 0.2s;}
         .proj-trigger.open .proj-trigger-arrow{transform:rotate(180deg);}
-        .proj-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);border:1px solid var(--border-hover);border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,0.3);z-index:50;overflow:hidden;animation:dropIn 0.15s ease;}
+
+        /* ── FIX: dropdown uses position:absolute relative to .proj-dropdown-wrap
+              which now has z-index:200, so it escapes any parent stacking context ── */
+        .proj-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);border:1px solid var(--border-hover);border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,0.3);z-index:300;overflow:hidden;animation:dropIn 0.15s ease;}
         @keyframes dropIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
         .proj-search{display:flex;align-items:center;gap:8px;padding:0.7rem 1rem;border-bottom:1px solid var(--border);}
         .proj-search-icon{color:var(--text-muted);flex-shrink:0;}
@@ -359,7 +368,7 @@ export default function Dashboard() {
         <div className="main-layout">
           <div className="left-col">
 
-            {/* TRACK TIME */}
+            {/* TRACK TIME — no overflow:hidden on .card so dropdown escapes freely */}
             <div className="card">
               <div className="section-label" style={{marginBottom:"1.5rem"}}>
                 Time Tracking
@@ -378,7 +387,7 @@ export default function Dashboard() {
 
               {isActive&&(
                 <div className="input-section">
-                  {/* Project dropdown */}
+                  {/* Project dropdown — z-index:200 on wrapper, z-index:300 on menu */}
                   <div className="proj-dropdown-wrap" ref={projWrapRef}>
                     <button
                       className={`proj-trigger ${projOpen?"open":""}`}

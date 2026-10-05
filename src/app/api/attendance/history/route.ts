@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
+const IST = "Asia/Kolkata";
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -24,29 +26,29 @@ export async function GET(req: Request) {
 
     const history = records
       .map((item) => {
-        // TypeScript knows clockOut is not null due to the where clause above,
-        // but the Prisma type is still Date | null — guard both fields explicitly
         if (!item.clockIn || !item.clockOut) return null;
 
-        const clockInTime  = new Date(item.clockIn);   // now guaranteed non-null
+        const clockInTime  = new Date(item.clockIn);
         const clockOutTime = new Date(item.clockOut);
 
         const durationSec = Math.floor(
           (clockOutTime.getTime() - clockInTime.getTime()) / 1000
         );
-
         const h = Math.floor(durationSec / 3600);
         const m = Math.floor((durationSec % 3600) / 60);
 
         return {
-          date: clockInTime.toLocaleDateString(),
-          clockIn: clockInTime.toLocaleTimeString([], {
+          // ✅ All three use IST explicitly
+          date: clockInTime.toLocaleDateString("en-IN", { timeZone: IST }),
+          clockIn: clockInTime.toLocaleTimeString("en-IN", {
             hour: "2-digit",
             minute: "2-digit",
+            timeZone: IST,
           }),
-          clockOut: clockOutTime.toLocaleTimeString([], {
+          clockOut: clockOutTime.toLocaleTimeString("en-IN", {
             hour: "2-digit",
             minute: "2-digit",
+            timeZone: IST,
           }),
           duration:    `${h}h ${m}m`,
           projectName: item.projectName || "No Project",

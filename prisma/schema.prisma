@@ -1,9 +1,11 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
   provider = "postgresql"
+ 
 }
 
 model Employee {
@@ -119,7 +121,7 @@ enum ProjectStatus {
   INACTIVE
   COMPLETED
 }
-model Announcement {
+model Announcement { 
   id        String   @id @default(uuid())
   title     String
   body      String

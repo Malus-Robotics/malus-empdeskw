@@ -2,30 +2,44 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarDays, Receipt, CalendarClock, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, CalendarDays, Receipt, CalendarClock, Settings, LogOut, ListChecks } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // ── Read theme ONCE from localStorage as the initial value ──
-  // This runs synchronously before first render so the default is always
-  // correct and we never flash dark→light. The root layout script already
-  // sets data-theme on <html> before paint; here we just keep React in sync.
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     if (typeof window === "undefined") return "dark";
     return (localStorage.getItem("mr-theme") as "dark" | "light") || "dark";
   });
 
-  // ── Apply to DOM and persist whenever theme changes ──
+  // NEW: unseen task count, shown as a badge on the Tasks nav link
+  const [unseenTaskCount, setUnseenTaskCount] = useState(0);
+
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("mr-theme", theme);
   }, [theme]);
 
-  // Expose setter globally so Settings page can call it without prop drilling
   useEffect(() => {
     (window as any).__setMRTheme = (t: "dark" | "light") => setTheme(t);
   }, []);
+
+  // NEW: poll unseen task count — on mount, and every 60s while the app is open,
+  // so a task assigned while the employee is already logged in still shows up
+  // without needing a full page reload.
+  useEffect(() => {
+    async function loadCount() {
+      try {
+        const res = await fetch("/api/my-tasks/unread-count");
+        if (!res.ok) return;
+        const data = await res.json();
+        setUnseenTaskCount(data.count || 0);
+      } catch { /* silent — badge just stays at its last known value */ }
+    }
+    loadCount();
+    const iv = setInterval(loadCount, 60000);
+    return () => clearInterval(iv);
+  }, [pathname]); // also refetch on navigation, e.g. right after visiting /dashboard/tasks
 
   function isActive(path: string) {
     return pathname === path;
@@ -63,7 +77,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           background: var(--bg); font-family: 'Syne', sans-serif; color: var(--text-primary);
         }
 
-        /* SIDEBAR */
         .sidebar {
           width: 240px; flex-shrink: 0;
           background: var(--surface); border-right: 1px solid var(--border);
@@ -126,8 +139,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           border-radius: 100px; background: rgba(249,115,22,0.12);
           border: 1px solid rgba(249,115,22,0.2); color: var(--orange);
         }
+        .nav-badge.count {
+          background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent);
+          min-width: 18px; text-align: center;
+        }
 
-        /* SIDEBAR FOOTER */
         .sidebar-footer {
           position: relative; z-index: 1;
           padding: 1rem 0.85rem 1.5rem;
@@ -149,7 +165,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <div className="layout-root">
         <aside className="sidebar">
-          {/* Logo */}
           <div className="sidebar-logo">
             <div className="sidebar-logo-mark">
               <svg viewBox="0 0 14 14">
@@ -166,7 +181,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
 
-          {/* Nav */}
           <nav className="sidebar-nav">
             <div className="nav-section-label">Main</div>
 
@@ -178,6 +192,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link href="/dashboard/history" className={`nav-link ${isActive("/dashboard/history") ? "active" : ""}`}>
               <CalendarDays className="nav-icon" />
               History
+            </Link>
+
+            {/* NEW: Tasks link with live unseen-count badge */}
+            <Link href="/dashboard/tasks" className={`nav-link ${isActive("/dashboard/tasks") ? "active" : ""}`}>
+              <ListChecks className="nav-icon" />
+              Tasks
+              {unseenTaskCount > 0 && <span className="nav-badge count">{unseenTaskCount}</span>}
             </Link>
 
             <div className="nav-divider" />
@@ -203,7 +224,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
           </nav>
 
-          {/* Footer */}
           <div className="sidebar-footer">
             <button className="logout-btn" onClick={logout}>
               <LogOut className="logout-icon" />
