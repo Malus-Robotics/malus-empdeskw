@@ -1,8 +1,11 @@
+// src/app/dashboard/page.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { ArrowRight, ChevronDown, Loader2, Play, Search, Square, X } from "lucide-react";
+import LeaveCalendar from "@/components/LeaveCalendar";
 
 interface HistoryItem {
   date: string; clockIn: string; clockOut: string;
@@ -10,6 +13,13 @@ interface HistoryItem {
 }
 interface Project { id: string; code: string; name: string; client?: string; }
 interface Announcement { id: string; title: string; body: string; date: string; type: string; }
+
+const TYPE_CFG: { [k: string]: { color: string; bg: string; border: string; label: string } } = {
+  holiday: { color: "var(--green)",  bg: "var(--green-soft)",  border: "var(--green-border)",  label: "Holiday" },
+  alert:   { color: "var(--orange)", bg: "var(--orange-soft)", border: "var(--orange-border)", label: "Alert" },
+  info:    { color: "var(--accent)", bg: "var(--accent-soft)", border: "var(--accent-border)", label: "Info" },
+  urgent:  { color: "var(--red)",    bg: "var(--red-soft)",    border: "var(--red-border)",    label: "Urgent" },
+};
 
 export default function Dashboard() {
   const router = useRouter();
@@ -30,6 +40,8 @@ export default function Dashboard() {
   const [loadingHistory,  setLoadingHistory]   = useState(false);
   const [todaySessions,   setTodaySessions]    = useState(0);
   const [todayHours,      setTodayHours]       = useState("0h 0m");
+  const [hour,            setHour]             = useState<number | null>(null);
+  const [todayStr,        setTodayStr]         = useState("");
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
@@ -38,6 +50,13 @@ export default function Dashboard() {
     { id:"2", title:"Expense Submission Deadline", body:"All expense claims for Q1 must be submitted by 30th March 2026. Late submissions will not be processed.", date:"2026-03-20", type:"alert" },
     { id:"3", title:"New Project Onboarding", body:"PROJ-005 Hyderabad Logistics Automation has been added. Team assignments will be shared shortly.", date:"2026-03-18", type:"info" },
   ];
+
+  // greeting + date are set after mount so server and client markup match
+  useEffect(() => {
+    const d = new Date();
+    setHour(d.getHours());
+    setTodayStr(new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long" }).format(d));
+  }, []);
 
   // ── Load user, status, projects, history, announcements ──
   useEffect(()=>{
@@ -135,25 +154,30 @@ export default function Dashboard() {
   // ── Clock in / out ──
   async function send(action:string) {
     setLoading(true);
-    const res = await fetch("/api/attendance",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        employeeId, action, timesheet,
-        projectName: selectedProject?.name||"",
-        projectCode: selectedProject?.code||"",
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if(!data.success){ toast.error(data.error||"Something went wrong"); return; }
-    setStatus(data.status);
-    if(data.clockInTime) setClockInTime(data.clockInTime);
-    if(action==="CLOCK_IN") toast.success("Session started");
-    if(action==="CLOCK_OUT"){
-      toast.success("Session completed");
-      setTimesheet(""); setSelectedProject(null);
-      setSeconds(0); setClockInTime(null);
-      fetchHistory(employeeId);
+    try {
+      const res = await fetch("/api/attendance",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          employeeId, action, timesheet,
+          projectName: selectedProject?.name||"",
+          projectCode: selectedProject?.code||"",
+        }),
+      });
+      const data = await res.json();
+      if(!data.success){ toast.error(data.error||"Something went wrong"); return; }
+      setStatus(data.status);
+      if(data.clockInTime) setClockInTime(data.clockInTime);
+      if(action==="CLOCK_IN") toast.success("Session started");
+      if(action==="CLOCK_OUT"){
+        toast.success("Session completed");
+        setTimesheet(""); setSelectedProject(null);
+        setSeconds(0); setClockInTime(null);
+        fetchHistory(employeeId);
+      }
+    } catch {
+      toast.error("Could not reach the server. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -168,433 +192,411 @@ export default function Dashboard() {
   const recentSix = history.slice(0,6);
   const hasMore   = history.length > 6;
 
+  const greeting  = hour === null ? "Welcome" : hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const firstName = (employeeName || "").split(" ")[0];
+
+  const fmtAnnDate = (d:string)=>new Intl.DateTimeFormat("en-IN",{day:"2-digit",month:"short"}).format(new Date(d));
+
   return(
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
-        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        :root,[data-theme="dark"]{
-          --bg:#0a0a0f;--surface:#111118;--surface-2:#16161f;--surface-3:#1c1c28;
-          --border:rgba(255,255,255,0.06);--border-hover:rgba(255,255,255,0.12);
-          --accent:#7c6af7;--accent-soft:rgba(124,106,247,0.12);--accent-border:rgba(124,106,247,0.2);--accent-glow:rgba(124,106,247,0.25);
-          --green:#22d3a2;--green-bg:rgba(34,211,162,0.1);--green-border:rgba(34,211,162,0.2);
-          --orange:#f97316;
-          --text-primary:#f0f0f8;--text-secondary:#8888aa;--text-muted:#44445a;
-          --topbar-bg:rgba(10,10,15,0.85);
-          --timer-bg:linear-gradient(135deg,#16133a 0%,#0f1428 100%);
-          --timer-border:rgba(124,106,247,0.2);--timer-glow:rgba(124,106,247,0.2);
-          --timer-label:rgba(255,255,255,0.25);--timer-meta-label:rgba(255,255,255,0.3);
-          --timer-meta-val:rgba(255,255,255,0.75);--timer-inactive:rgba(255,255,255,0.18);
-          --timer-divider:rgba(255,255,255,0.07);
-          --btn-out-bg:#1c1c28;--btn-out-color:#8888aa;
+        .ws-root{min-height:100vh;background:var(--bg);color:var(--text-primary);font-family:var(--font-jakarta),system-ui,sans-serif;padding:2.25rem 2rem 4rem;overflow-x:clip;}
+        .ws-root *,.ws-root *::before,.ws-root *::after{box-sizing:border-box;}
+        .ws-inner{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:1.4rem;}
+
+        /* header */
+        .ws-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+        .ws-title{font-size:1.85rem;font-weight:800;letter-spacing:-0.03em;line-height:1.1;}
+        .ws-sub{font-size:0.9rem;color:var(--text-muted);margin-top:6px;}
+        .ws-head-right{display:flex;align-items:center;gap:0.6rem;}
+        .ws-id{font-size:0.78rem;font-weight:600;color:var(--text-secondary);background:var(--surface);border:1px solid var(--border);border-radius:100px;padding:6px 12px;}
+        .ws-status{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:100px;font-size:0.78rem;font-weight:700;border:1px solid var(--border);background:var(--surface-2);color:var(--text-muted);}
+        .ws-status.on{background:var(--green-soft);border-color:var(--green-border);color:var(--green);}
+        .ws-status-dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
+        .ws-status.on .ws-status-dot{animation:ws-pulse 2s infinite;}
+        @keyframes ws-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 40%,transparent);}70%{box-shadow:0 0 0 6px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+
+        /* summary strip */
+        .ws-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:0.8rem;}
+        .ws-kpi{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:1rem 1.15rem;box-shadow:var(--shadow-card);}
+        .ws-kpi-l{display:flex;align-items:center;gap:7px;font-size:0.78rem;font-weight:600;color:var(--text-secondary);}
+        .ws-kpi-dot{width:8px;height:8px;border-radius:50%;background:var(--kc);}
+        .ws-kpi-n{font-size:1.8rem;font-weight:800;letter-spacing:-0.03em;line-height:1;margin:10px 0 6px;color:var(--kc2,var(--text-primary));}
+        .ws-kpi small{font-size:0.72rem;color:var(--text-muted);}
+
+        /* layout */
+        .ws-main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:1.4rem;align-items:start;}
+        .ws-left,.ws-right{display:flex;flex-direction:column;gap:1.4rem;min-width:0;}
+
+        .ws-card{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:1.6rem;box-shadow:var(--shadow-card);position:relative;}
+        .ws-card-h{display:flex;align-items:center;justify-content:space-between;gap:0.8rem;margin-bottom:1.2rem;}
+        .ws-card-t{font-size:1.05rem;font-weight:800;letter-spacing:-0.01em;display:flex;align-items:center;gap:10px;}
+        .ws-live{display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);border:1px solid var(--green-border);border-radius:100px;padding:3px 10px;font-size:0.7rem;font-weight:700;color:var(--green);}
+        .ws-live i{width:6px;height:6px;background:var(--green);border-radius:50%;animation:ws-pulse 2s infinite;}
+
+        /* clock buttons */
+        .ws-btns{display:grid;grid-template-columns:1fr 1fr;gap:0.9rem;}
+        .ws-btn{display:flex;align-items:center;justify-content:center;gap:10px;height:54px;border-radius:14px;font-family:inherit;font-size:0.92rem;font-weight:700;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s,color .15s,opacity .15s;}
+        .ws-btn-in{background:var(--accent);color:#fff;box-shadow:0 4px 14px var(--accent-glow);}
+        .ws-btn-in:hover:not(:disabled){background:var(--accent-hover);}
+        .ws-btn-out{background:var(--btn-out-bg);color:var(--btn-out-color);border-color:var(--border);}
+        .ws-btn-out:hover:not(:disabled){border-color:var(--orange-border);background:var(--orange-soft);color:var(--orange);}
+        .ws-btn:disabled{opacity:0.4;cursor:not-allowed;box-shadow:none;}
+        .ws-hint{margin-top:1rem;font-size:0.82rem;color:var(--text-muted);line-height:1.6;}
+
+        .ws-fields{display:flex;flex-direction:column;gap:1rem;margin-top:1.3rem;animation:ws-in .25s ease;}
+        @keyframes ws-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+        .ws-lab{display:block;font-size:0.78rem;font-weight:700;color:var(--text-secondary);margin-bottom:6px;}
+        .ws-ta{width:100%;min-height:104px;resize:vertical;padding:0.8rem 0.95rem;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text-primary);font-family:inherit;font-size:0.88rem;line-height:1.6;outline:none;}
+        .ws-ta::placeholder{color:var(--text-muted);}
+        .ws-ta:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);}
+
+        /* project dropdown */
+        .ws-dd{position:relative;z-index:200;}
+        .ws-dd-trigger{display:flex;align-items:center;justify-content:space-between;gap:0.6rem;width:100%;min-height:48px;padding:0.55rem 0.95rem;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text-primary);font-family:inherit;font-size:0.88rem;cursor:pointer;text-align:left;}
+        .ws-dd-trigger:hover{border-color:var(--border-hover);}
+        .ws-dd-trigger.open,.ws-dd-trigger:focus-visible{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);outline:none;}
+        .ws-dd-left{display:flex;flex-direction:column;gap:2px;overflow:hidden;}
+        .ws-dd-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .ws-dd-code{font-size:0.74rem;font-weight:600;color:var(--accent);}
+        .ws-dd-ph{color:var(--text-muted);}
+        .ws-dd-arrow{flex-shrink:0;color:var(--text-muted);transition:transform .2s;}
+        .ws-dd-trigger.open .ws-dd-arrow{transform:rotate(180deg);}
+        .ws-dd-menu{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);border:1px solid var(--border-hover);border-radius:14px;box-shadow:var(--shadow-pop);z-index:300;overflow:hidden;animation:ws-in .15s ease;}
+        .ws-dd-search{display:flex;align-items:center;gap:8px;padding:0.7rem 0.95rem;border-bottom:1px solid var(--border);color:var(--text-muted);}
+        .ws-dd-search input{flex:1;background:transparent;border:none;outline:none;color:var(--text-primary);font-family:inherit;font-size:0.85rem;min-width:0;}
+        .ws-dd-search input::placeholder{color:var(--text-muted);}
+        .ws-dd-list{max-height:230px;overflow-y:auto;}
+        .ws-dd-item{display:flex;align-items:center;gap:10px;padding:0.7rem 0.95rem;cursor:pointer;}
+        .ws-dd-item:hover{background:var(--surface-2);}
+        .ws-dd-item.sel{background:var(--accent-soft);}
+        .ws-dd-icode{font-size:0.74rem;font-weight:700;color:var(--accent);min-width:74px;flex-shrink:0;}
+        .ws-dd-iname{font-size:0.85rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .ws-dd-iclient{font-size:0.74rem;color:var(--text-muted);margin-left:auto;flex-shrink:0;}
+        .ws-dd-clear{display:flex;align-items:center;gap:7px;padding:0.7rem 0.95rem;border-top:1px solid var(--border);font-size:0.8rem;color:var(--text-muted);cursor:pointer;}
+        .ws-dd-clear:hover{color:var(--text-primary);}
+        .ws-dd-empty{padding:1.5rem;text-align:center;font-size:0.82rem;color:var(--text-muted);}
+
+        /* timer */
+        .ws-timer{background:var(--timer-bg);border:1px solid var(--timer-border);border-radius:22px;padding:1.6rem;position:relative;overflow:hidden;}
+        .ws-timer::before{content:'';position:absolute;top:-30%;right:-20%;width:60%;height:60%;background:radial-gradient(ellipse,var(--timer-glow) 0%,transparent 70%);pointer-events:none;}
+        .ws-timer-l{font-size:0.82rem;font-weight:700;color:var(--timer-label);margin-bottom:0.6rem;position:relative;}
+        .ws-timer-d{font-size:3rem;font-weight:800;letter-spacing:-0.03em;color:var(--text-primary);line-height:1;margin-bottom:1.4rem;font-variant-numeric:tabular-nums;position:relative;}
+        .ws-timer-d.off{color:var(--timer-inactive);}
+        .ws-timer-meta{display:grid;grid-template-columns:1fr 1fr;gap:1rem;padding-top:1.1rem;border-top:1px solid var(--timer-divider);position:relative;}
+        .ws-timer-ml{font-size:0.74rem;font-weight:600;color:var(--timer-meta-label);margin-bottom:4px;}
+        .ws-timer-mv{font-size:0.95rem;font-weight:700;color:var(--timer-meta-val);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+        /* recent activity */
+        .ws-view-all{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:0.78rem;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:10px;padding:6px 12px;cursor:pointer;}
+        .ws-view-all:hover{background:var(--accent);color:#fff;}
+        .ws-list{display:flex;flex-direction:column;gap:0.4rem;}
+        .ws-item{display:flex;align-items:center;gap:1rem;padding:0.8rem 0.9rem;border-radius:14px;border:1px solid transparent;}
+        .ws-item:hover{background:var(--surface-2);border-color:var(--border);}
+        .ws-date{flex-shrink:0;width:48px;height:48px;background:var(--accent-soft);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+        .ws-date b{font-size:0.78rem;font-weight:800;color:var(--accent);line-height:1.1;}
+        .ws-date span{font-size:0.64rem;font-weight:600;color:var(--text-muted);}
+        .ws-info{flex:1;min-width:0;}
+        .ws-proj{font-size:0.9rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .ws-time{font-size:0.78rem;color:var(--text-muted);margin-top:3px;}
+        .ws-right-t{text-align:right;flex-shrink:0;}
+        .ws-dur{font-size:0.9rem;font-weight:800;}
+        .ws-code{font-size:0.72rem;font-weight:600;color:var(--accent);margin-top:3px;}
+        .ws-more{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:0.8rem;padding:0.75rem;border:1px dashed var(--border);border-radius:12px;cursor:pointer;font-size:0.82rem;font-weight:700;color:var(--text-muted);background:none;font-family:inherit;width:100%;}
+        .ws-more:hover{border-color:var(--accent-border);background:var(--accent-soft);color:var(--accent);}
+        .ws-empty{padding:2.5rem 1.5rem;text-align:center;border:1px dashed var(--border);border-radius:16px;color:var(--text-muted);font-size:0.88rem;line-height:1.6;}
+        .ws-spin{animation:ws-rot .8s linear infinite;}
+        @keyframes ws-rot{to{transform:rotate(360deg)}}
+
+        /* announcements */
+        .ws-ann-list{display:flex;flex-direction:column;gap:0.7rem;}
+        .ws-ann{display:grid;grid-template-columns:4px 1fr;border-radius:14px;background:var(--surface-2);border:1px solid var(--border);overflow:hidden;}
+        .ws-ann-bar{width:4px;}
+        .ws-ann-body{padding:0.85rem 1rem;}
+        .ws-ann-top{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;}
+        .ws-ann-title{font-size:0.88rem;font-weight:800;}
+        .ws-ann-badge{font-size:0.68rem;font-weight:700;padding:2px 8px;border-radius:100px;border:1px solid;}
+        .ws-ann-date{font-size:0.74rem;color:var(--text-muted);margin-left:auto;}
+        .ws-ann-text{font-size:0.82rem;color:var(--text-secondary);line-height:1.6;}
+        .ws-count{font-size:0.78rem;color:var(--text-muted);font-weight:600;}
+
+        /* ───────────── MOBILE ───────────── */
+        @media(max-width:1000px){
+          .ws-kpis{grid-template-columns:repeat(2,1fr);}
+          /* single column; flatten both columns so cards can be re-ordered:
+             clock in → timer → recent activity → calendar → announcements */
+          .ws-main{display:flex;flex-direction:column;align-items:stretch;gap:1rem;}
+          .ws-left,.ws-right{display:contents;}
+          .ws-left > .ws-card:nth-child(1){order:0;}
+          .ws-timer{order:1;}
+          .ws-left > .ws-card:nth-child(2){order:3;}
+          .ws-right > .lc-card{order:4;}
+          .ws-ann-card{order:5;}
         }
-        [data-theme="light"]{
-          --bg:#f4f5f9;--surface:#ffffff;--surface-2:#f0f1f6;--surface-3:#e8eaf0;
-          --border:rgba(0,0,0,0.08);--border-hover:rgba(0,0,0,0.15);
-          --accent:#6355e8;--accent-soft:rgba(99,85,232,0.08);--accent-border:rgba(99,85,232,0.2);--accent-glow:rgba(99,85,232,0.2);
-          --green:#0fa87a;--green-bg:rgba(15,168,122,0.08);--green-border:rgba(15,168,122,0.2);
-          --orange:#ea6c0a;
-          --text-primary:#0f0f1a;--text-secondary:#555570;--text-muted:#9999b5;
-          --topbar-bg:rgba(244,245,249,0.92);
-          --timer-bg:linear-gradient(135deg,#ede9fe 0%,#ddd6fe 100%);
-          --timer-border:rgba(99,85,232,0.25);--timer-glow:rgba(99,85,232,0.1);
-          --timer-label:rgba(99,85,232,0.5);--timer-meta-label:rgba(99,85,232,0.45);
-          --timer-meta-val:#3730a3;--timer-inactive:rgba(99,85,232,0.2);
-          --timer-divider:rgba(99,85,232,0.12);
-          --btn-out-bg:#f0f1f6;--btn-out-color:#555570;
+        @media(max-width:640px){
+          .ws-root{padding:1.25rem 1rem 3rem;}
+          .ws-title{font-size:1.5rem;}
+          .ws-card,.ws-timer{padding:1.2rem;border-radius:18px;}
+          .ws-kpi{padding:0.85rem 0.95rem;}
+          .ws-kpi-n{font-size:1.5rem;}
+          .ws-btns{grid-template-columns:1fr;gap:0.7rem;}
+          .ws-timer-d{font-size:2.5rem;}
+          .ws-item{padding:0.7rem 0.4rem;gap:0.75rem;}
+          .ws-dd-iclient{display:none;}
+          .ws-ta,.ws-dd-trigger,.ws-dd-search input{font-size:16px;} /* stops iOS zoom on focus */
+          .ws-ann-date{margin-left:0;}
         }
-        *{transition:background-color 0.25s ease,border-color 0.25s ease,color 0.25s ease,box-shadow 0.25s ease;}
-
-        .ws-root{min-height:100vh;background:var(--bg);color:var(--text-primary);font-family:'Syne',sans-serif;position:relative;overflow-x:hidden;}
-        .ws-root::before{content:'';position:fixed;top:-20%;left:-10%;width:60%;height:60%;background:radial-gradient(ellipse,rgba(124,106,247,0.06) 0%,transparent 70%);pointer-events:none;z-index:0;}
-
-        .topbar{position:sticky;top:0;z-index:100;background:var(--topbar-bg);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 2rem;height:60px;}
-        .topbar-logo{font-size:1.1rem;font-weight:800;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px;}
-        .topbar-logo-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent-glow);}
-        .topbar-right{display:flex;align-items:center;gap:1rem;}
-        .status-badge{display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:100px;font-size:0.72rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);}
-        .status-badge.active{background:var(--green-bg);border-color:var(--green-border);color:var(--green);}
-        .status-badge.inactive{background:var(--surface-2);color:var(--text-muted);}
-        .status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
-        .status-badge.active .status-dot{animation:pulse-dot 2s infinite;}
-        @keyframes pulse-dot{0%{box-shadow:0 0 0 0 rgba(34,211,162,0.4);}70%{box-shadow:0 0 0 6px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
-        .emp-chip{display:flex;align-items:center;gap:7px;padding:5px 12px;background:var(--surface);border:1px solid var(--border);border-radius:100px;}
-        .emp-name{font-size:0.75rem;font-weight:700;color:var(--text-primary);}
-        .emp-id{font-family:'JetBrains Mono',monospace;font-size:0.62rem;color:var(--text-muted);letter-spacing:0.06em;}
-
-        .main-layout{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:2.5rem 2rem;display:grid;grid-template-columns:1fr 380px;gap:1.5rem;align-items:start;}
-        @media(max-width:900px){.main-layout{grid-template-columns:1fr;}}
-        .left-col{display:flex;flex-direction:column;gap:1.5rem;}
-        .right-col{display:flex;flex-direction:column;gap:1.5rem;}
-
-        .section-label{font-size:0.65rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-muted);font-family:'JetBrains Mono',monospace;margin-bottom:1.25rem;}
-
-        /* ── FIX: removed overflow:hidden so the project dropdown is never clipped.
-              The ::before glow pseudo-element is repositioned to a wrapper below. ── */
-        .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;position:relative;transition:border-color 0.2s;}
-        .card:hover{border-color:var(--border-hover);}
-
-        /* Glow effect moved to a non-clipping inner element so overflow:hidden is no longer needed */
-        .card-glow::after{content:'';position:absolute;top:-30%;right:-20%;width:60%;height:60%;background:radial-gradient(ellipse,rgba(124,106,247,0.04) 0%,transparent 70%);pointer-events:none;border-radius:inherit;z-index:0;}
-
-        .clock-btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;}
-        .btn{display:flex;align-items:center;justify-content:center;gap:10px;padding:1.1rem 1.5rem;border-radius:14px;font-family:'Syne',sans-serif;font-size:0.82rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;border:none;outline:none;transition:all 0.2s;}
-        .btn-in{background:var(--accent);color:#fff;box-shadow:0 0 30px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,0.15);}
-        .btn-in:hover:not(:disabled){filter:brightness(1.1);transform:translateY(-1px);box-shadow:0 0 40px var(--accent-glow);}
-        .btn-in:disabled{opacity:0.35;cursor:not-allowed;transform:none;box-shadow:none;}
-        .btn-out{background:var(--btn-out-bg);color:var(--btn-out-color);border:1px solid var(--border);}
-        .btn-out:hover:not(:disabled){background:rgba(249,115,22,0.08);border-color:rgba(249,115,22,0.3);color:var(--orange);transform:translateY(-1px);}
-        .btn-out:disabled{opacity:0.25;cursor:not-allowed;transform:none;}
-        .btn-icon{width:18px;height:18px;border-radius:50%;border:2px solid currentColor;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-        .btn-icon-inner-in{width:7px;height:7px;background:currentColor;border-radius:2px;}
-        .btn-icon-inner-out{width:7px;height:7px;border:2px solid currentColor;border-radius:50%;}
-
-        .live-chip{display:inline-flex;align-items:center;gap:6px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:100px;padding:3px 10px;font-size:0.6rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--green);font-family:'JetBrains Mono',monospace;}
-        .live-dot{width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse-dot 2s infinite;}
-
-        .input-section{display:flex;flex-direction:column;gap:0.75rem;animation:fadeSlideIn 0.4s ease;}
-        @keyframes fadeSlideIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
-        .ws-input{background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.82rem;padding:0.8rem 1rem;border-radius:12px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;width:100%;}
-        .ws-input::placeholder{color:var(--text-muted);}
-        .ws-input:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);}
-        textarea.ws-input{resize:none;height:110px;line-height:1.6;}
-
-        /* ── FIX: z-index elevated so dropdown layers above sibling cards ── */
-        .proj-dropdown-wrap{position:relative;z-index:200;}
-        .proj-trigger{display:flex;align-items:center;justify-content:space-between;gap:0.5rem;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.82rem;padding:0.8rem 1rem;border-radius:12px;cursor:pointer;width:100%;transition:border-color 0.2s,box-shadow 0.2s;text-align:left;}
-        .proj-trigger.open,.proj-trigger:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);outline:none;}
-        .proj-trigger-left{display:flex;flex-direction:column;gap:2px;overflow:hidden;}
-        .proj-trigger-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .proj-trigger-code{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--accent);}
-        .proj-trigger-placeholder{color:var(--text-muted);}
-        .proj-trigger-arrow{width:14px;height:14px;flex-shrink:0;color:var(--text-muted);transition:transform 0.2s;}
-        .proj-trigger.open .proj-trigger-arrow{transform:rotate(180deg);}
-
-        /* ── FIX: dropdown uses position:absolute relative to .proj-dropdown-wrap
-              which now has z-index:200, so it escapes any parent stacking context ── */
-        .proj-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);border:1px solid var(--border-hover);border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,0.3);z-index:300;overflow:hidden;animation:dropIn 0.15s ease;}
-        @keyframes dropIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-        .proj-search{display:flex;align-items:center;gap:8px;padding:0.7rem 1rem;border-bottom:1px solid var(--border);}
-        .proj-search-icon{color:var(--text-muted);flex-shrink:0;}
-        .proj-search-input{flex:1;background:transparent;border:none;outline:none;color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.8rem;}
-        .proj-search-input::placeholder{color:var(--text-muted);}
-        .proj-list{max-height:220px;overflow-y:auto;}
-        .proj-item{display:flex;align-items:center;gap:10px;padding:0.7rem 1rem;cursor:pointer;transition:background 0.15s;}
-        .proj-item:hover,.proj-item.focused{background:var(--surface-2);}
-        .proj-item.selected{background:var(--accent-soft);}
-        .proj-item-code{font-family:'JetBrains Mono',monospace;font-size:0.65rem;font-weight:700;color:var(--accent);min-width:70px;flex-shrink:0;}
-        .proj-item-name{font-size:0.8rem;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .proj-item-client{font-size:0.65rem;color:var(--text-muted);margin-left:auto;flex-shrink:0;}
-        .proj-clear{display:flex;align-items:center;gap:7px;padding:0.65rem 1rem;border-top:1px solid var(--border);font-size:0.72rem;color:var(--text-muted);cursor:pointer;transition:color 0.15s;}
-        .proj-clear:hover{color:var(--text-secondary);}
-        .proj-empty{padding:1.5rem;text-align:center;font-size:0.75rem;color:var(--text-muted);}
-
-        .timer-card{background:var(--timer-bg);border:1px solid var(--timer-border);border-radius:20px;padding:1.75rem;position:relative;overflow:hidden;}
-        .timer-card::before{content:'';position:absolute;top:-30%;right:-20%;width:60%;height:60%;background:radial-gradient(ellipse,var(--timer-glow) 0%,transparent 70%);pointer-events:none;}
-        .timer-section-label{font-size:0.65rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:var(--timer-label);margin-bottom:0.75rem;}
-        .timer-display{font-family:'JetBrains Mono',monospace;font-size:3rem;font-weight:700;letter-spacing:-0.02em;color:var(--text-primary);line-height:1;margin-bottom:1.5rem;}
-        .timer-display.inactive{color:var(--timer-inactive);}
-        .timer-meta{display:grid;grid-template-columns:1fr 1fr;gap:1rem;padding-top:1.25rem;border-top:1px solid var(--timer-divider);}
-        .timer-meta-label{font-size:0.6rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;font-family:'JetBrains Mono',monospace;color:var(--timer-meta-label);margin-bottom:4px;}
-        .timer-meta-value{font-size:0.82rem;font-weight:600;color:var(--timer-meta-val);font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-
-        .history-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;}
-        .view-all-btn{display:flex;align-items:center;gap:6px;font-family:'Syne',sans-serif;font-size:0.72rem;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:5px 12px;cursor:pointer;transition:all 0.18s;}
-        .view-all-btn:hover{filter:brightness(1.1);}
-        .history-list{display:flex;flex-direction:column;gap:0.6rem;}
-        .history-item{display:flex;align-items:center;gap:1rem;padding:0.9rem 1rem;border-radius:14px;border:1px solid transparent;transition:all 0.2s;cursor:default;}
-        .history-item:hover{background:var(--surface-2);border-color:var(--border);}
-        .history-date-badge{flex-shrink:0;width:46px;height:46px;background:var(--surface-3);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
-        .history-date-top{font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:var(--accent);}
-        .history-date-bot{font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--text-muted);}
-        .history-info{flex:1;min-width:0;}
-        .history-project{font-size:0.82rem;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px;}
-        .history-time{font-family:'JetBrains Mono',monospace;font-size:0.68rem;color:var(--text-muted);}
-        .history-right{text-align:right;flex-shrink:0;}
-        .history-duration{font-family:'JetBrains Mono',monospace;font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:3px;}
-        .history-code{font-family:'JetBrains Mono',monospace;font-size:0.6rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;}
-
-        .more-strip{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:0.75rem;padding:0.7rem;border:1px dashed var(--border);border-radius:12px;cursor:pointer;transition:all 0.2s;}
-        .more-strip:hover{border-color:var(--accent-border);background:var(--accent-soft);}
-        .more-strip-text{font-size:0.75rem;font-weight:700;color:var(--text-muted);transition:color 0.2s;}
-        .more-strip:hover .more-strip-text{color:var(--accent);}
-
-        .stats-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;}
-        .stats-row{display:flex;justify-content:space-between;align-items:center;padding:0.8rem 0;}
-        .stats-row+.stats-row{border-top:1px solid var(--border);}
-        .stats-key{font-size:0.78rem;color:var(--text-secondary);font-weight:500;}
-        .stats-val{font-size:0.82rem;font-weight:700;color:var(--text-primary);font-family:'JetBrains Mono',monospace;}
-        .stats-val.green{color:var(--green);}
-
-        .empty-state{padding:3rem 1.5rem;text-align:center;border:1px dashed var(--border);border-radius:16px;color:var(--text-muted);font-size:0.8rem;}
-        .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle;margin-left:8px;}
-        @keyframes spin{to{transform:rotate(360deg)}}
-
-        .ann-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;}
-        .ann-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;}
-        .ann-list{display:flex;flex-direction:column;gap:0.75rem;}
-        .ann-item{display:grid;grid-template-columns:3px 1fr;border-radius:13px;background:var(--surface-2);border:1px solid var(--border);overflow:hidden;transition:border-color 0.2s;}
-        .ann-item:hover{border-color:var(--border-hover);}
-        .ann-bar{width:3px;}
-        .ann-body{padding:0.85rem 1rem;}
-        .ann-top{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;}
-        .ann-title{font-size:0.82rem;font-weight:800;color:var(--text-primary);}
-        .ann-badge{font-family:'JetBrains Mono',monospace;font-size:0.55rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:2px 7px;border-radius:5px;border:1px solid;flex-shrink:0;}
-        .ann-date{font-family:'JetBrains Mono',monospace;font-size:0.6rem;color:var(--text-muted);margin-left:auto;}
-        .ann-text{font-size:0.76rem;color:var(--text-secondary);line-height:1.6;}
-        .ann-empty{padding:2rem;text-align:center;font-size:0.78rem;color:var(--text-muted);}
+        @media(hover:none){
+          .ws-btn-in:hover:not(:disabled){background:var(--accent);}
+        }
       `}</style>
 
       <div className="ws-root">
+        <div className="ws-inner">
 
-        {/* TOPBAR */}
-        <header className="topbar">
-          <div className="topbar-logo">
-            <div className="topbar-logo-dot"/>
-            Workspace
-          </div>
-          <div className="topbar-right">
-            <div className="emp-chip">
-              {employeeName&&<span className="emp-name">{employeeName}</span>}
-              <span className="emp-id">{employeeId?`#${employeeId}`:"Loading…"}</span>
+          {/* HEADER */}
+          <div className="ws-head">
+            <div>
+              <h1 className="ws-title">{greeting}{firstName ? `, ${firstName}` : ""}</h1>
+              <p className="ws-sub">{todayStr || "Your workspace"}</p>
             </div>
-            <div className={`status-badge ${isActive?"active":"inactive"}`}>
-              <div className="status-dot"/>
-              {isActive?"Actively Working":"Offline"}
+            <div className="ws-head-right">
+              {employeeId && <span className="ws-id">#{employeeId}</span>}
+              <span className={`ws-status ${isActive ? "on" : ""}`}>
+                <span className="ws-status-dot" />
+                {isActive ? "Actively working" : "Offline"}
+              </span>
             </div>
           </div>
-        </header>
 
-        <div className="main-layout">
-          <div className="left-col">
+          {/* SUMMARY */}
+          <div className="ws-kpis">
+            <div className="ws-kpi" style={{ ["--kc" as any]: isActive ? "var(--green)" : "var(--text-muted)", ["--kc2" as any]: isActive ? "var(--green)" : undefined }}>
+              <span className="ws-kpi-l"><span className="ws-kpi-dot" />Current status</span>
+              <div className="ws-kpi-n">{isActive ? "Active" : "Offline"}</div>
+              <small>{isActive && clockInTime ? `Since ${new Date(clockInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Clock in to start a session"}</small>
+            </div>
+            <div className="ws-kpi" style={{ ["--kc" as any]: "var(--accent)", ["--kc2" as any]: "var(--accent)" }}>
+              <span className="ws-kpi-l"><span className="ws-kpi-dot" />Today&apos;s hours</span>
+              <div className="ws-kpi-n">{todayHours}</div>
+              <small>Completed sessions today</small>
+            </div>
+            <div className="ws-kpi" style={{ ["--kc" as any]: "var(--text-primary)" }}>
+              <span className="ws-kpi-l"><span className="ws-kpi-dot" />Today&apos;s sessions</span>
+              <div className="ws-kpi-n">{todaySessions}</div>
+              <small>Clock-ins today</small>
+            </div>
+            <div className="ws-kpi" style={{ ["--kc" as any]: "var(--text-muted)" }}>
+              <span className="ws-kpi-l"><span className="ws-kpi-dot" />Total sessions</span>
+              <div className="ws-kpi-n">{history.length}</div>
+              <small>All time</small>
+            </div>
+          </div>
 
-            {/* TRACK TIME — no overflow:hidden on .card so dropdown escapes freely */}
-            <div className="card">
-              <div className="section-label" style={{marginBottom:"1.5rem"}}>
-                Time Tracking
-                {isActive&&<span className="live-chip" style={{marginLeft:"10px",verticalAlign:"middle"}}><span className="live-dot"/>Live</span>}
-              </div>
-              <div className="clock-btn-grid">
-                <button className="btn btn-in" disabled={loading||isActive} onClick={()=>send("CLOCK_IN")}>
-                  <span className="btn-icon"><span className="btn-icon-inner-in"/></span>
-                  Clock In
-                </button>
-                <button className="btn btn-out" disabled={loading||!isActive} onClick={()=>send("CLOCK_OUT")}>
-                  <span className="btn-icon"><span className="btn-icon-inner-out"/></span>
-                  Clock Out
-                </button>
-              </div>
+          <div className="ws-main">
+            <div className="ws-left">
 
-              {isActive&&(
-                <div className="input-section">
-                  {/* Project dropdown — z-index:200 on wrapper, z-index:300 on menu */}
-                  <div className="proj-dropdown-wrap" ref={projWrapRef}>
-                    <button
-                      className={`proj-trigger ${projOpen?"open":""}`}
-                      onClick={()=>{setProjOpen(o=>!o); setProjSearch("");}}
-                    >
-                      {selectedProject?(
-                        <div className="proj-trigger-left">
-                          <span className="proj-trigger-name">{selectedProject.name}</span>
-                          <span className="proj-trigger-code">{selectedProject.code}{selectedProject.client?` · ${selectedProject.client}`:""}</span>
-                        </div>
-                      ):(
-                        <span className="proj-trigger-placeholder">Select project…</span>
-                      )}
-                      <svg className="proj-trigger-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="6 9 12 15 18 9"/>
-                      </svg>
-                    </button>
+              {/* TIME TRACKING */}
+              <div className="ws-card">
+                <div className="ws-card-h">
+                  <h2 className="ws-card-t">
+                    Time tracking
+                    {isActive && <span className="ws-live"><i />Live</span>}
+                  </h2>
+                </div>
 
-                    {projOpen&&(
-                      <div className="proj-dropdown">
-                        <div className="proj-search">
-                          <svg className="proj-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                          <input
-                            className="proj-search-input"
-                            placeholder="Search by code, name or client…"
-                            value={projSearch}
-                            onChange={e=>setProjSearch(e.target.value)}
-                            autoFocus
-                          />
-                        </div>
-                        <div className="proj-list">
-                          {filteredProjects.length===0?(
-                            <div className="proj-empty">{projects.length===0?"No active projects found.":"No results match your search."}</div>
-                          ):filteredProjects.map(p=>(
-                            <div
-                              key={p.id}
-                              className={`proj-item ${selectedProject?.id===p.id?"selected":""}`}
-                              onClick={()=>{setSelectedProject(p); setProjOpen(false); setProjSearch("");}}
-                            >
-                              <span className="proj-item-code">{p.code}</span>
-                              <span className="proj-item-name">{p.name}</span>
-                              {p.client&&<span className="proj-item-client">{p.client}</span>}
+                <div className="ws-btns">
+                  <button className="ws-btn ws-btn-in" disabled={loading || isActive} onClick={() => send("CLOCK_IN")}>
+                    {loading && !isActive ? <Loader2 size={18} className="ws-spin" /> : <Play size={18} />} Clock in
+                  </button>
+                  <button className="ws-btn ws-btn-out" disabled={loading || !isActive} onClick={() => send("CLOCK_OUT")}>
+                    {loading && isActive ? <Loader2 size={18} className="ws-spin" /> : <Square size={16} />} Clock out
+                  </button>
+                </div>
+
+                {!isActive && (
+                  <p className="ws-hint">Clock in to start your session. Once it is running you can pick a project and note what you are working on.</p>
+                )}
+
+                {isActive && (
+                  <div className="ws-fields">
+                    <div>
+                      <span className="ws-lab">Project</span>
+                      <div className="ws-dd" ref={projWrapRef}>
+                        <button
+                          type="button"
+                          className={`ws-dd-trigger ${projOpen ? "open" : ""}`}
+                          onClick={() => { setProjOpen(o => !o); setProjSearch(""); }}
+                        >
+                          {selectedProject ? (
+                            <div className="ws-dd-left">
+                              <span className="ws-dd-name">{selectedProject.name}</span>
+                              <span className="ws-dd-code">{selectedProject.code}{selectedProject.client ? ` · ${selectedProject.client}` : ""}</span>
                             </div>
-                          ))}
-                        </div>
-                        {selectedProject&&(
-                          <div className="proj-clear" onClick={()=>{setSelectedProject(null); setProjOpen(false);}}>
-                            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>
-                            Clear selection
+                          ) : (
+                            <span className="ws-dd-ph">Select a project</span>
+                          )}
+                          <ChevronDown size={16} className="ws-dd-arrow" />
+                        </button>
+
+                        {projOpen && (
+                          <div className="ws-dd-menu">
+                            <div className="ws-dd-search">
+                              <Search size={15} />
+                              <input
+                                placeholder="Search by code, name or client"
+                                value={projSearch}
+                                onChange={e => setProjSearch(e.target.value)}
+                                autoFocus
+                              />
+                            </div>
+                            <div className="ws-dd-list">
+                              {filteredProjects.length === 0 ? (
+                                <div className="ws-dd-empty">{projects.length === 0 ? "No active projects found." : "No project matches your search."}</div>
+                              ) : filteredProjects.map(p => (
+                                <div
+                                  key={p.id}
+                                  className={`ws-dd-item ${selectedProject?.id === p.id ? "sel" : ""}`}
+                                  onClick={() => { setSelectedProject(p); setProjOpen(false); setProjSearch(""); }}
+                                >
+                                  <span className="ws-dd-icode">{p.code}</span>
+                                  <span className="ws-dd-iname">{p.name}</span>
+                                  {p.client && <span className="ws-dd-iclient">{p.client}</span>}
+                                </div>
+                              ))}
+                            </div>
+                            {selectedProject && (
+                              <div className="ws-dd-clear" onClick={() => { setSelectedProject(null); setProjOpen(false); }}>
+                                <X size={14} /> Clear selection
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-
-                  {/* Timesheet */}
-                  <textarea
-                    className="ws-input"
-                    placeholder="Describe your current tasks…"
-                    value={timesheet}
-                    onChange={e=>setTimesheet(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* RECENT ACTIVITY */}
-            <div className="card">
-              <div className="history-header">
-                <div className="section-label" style={{marginBottom:0}}>
-                  Recent Activity
-                  {loadingHistory&&<span className="spinner"/>}
-                </div>
-                {history.length>0&&(
-                  <button className="view-all-btn" onClick={()=>router.push("/dashboard/history")}>
-                    View All
-                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="7" x2="11" y2="7"/><polyline points="8 4 11 7 8 10"/></svg>
-                  </button>
-                )}
-              </div>
-
-              <div className="history-list" style={{marginTop:"1.25rem"}}>
-                {recentSix.length>0 ? recentSix.map((item,idx)=>{
-                  const parts = item.date.split("/");
-                  return(
-                    <div className="history-item" key={idx}>
-                      <div className="history-date-badge">
-                        <span className="history-date-top">{parts[0]}/{parts[1]}</span>
-                        <span className="history-date-bot">{parts[2]}</span>
-                      </div>
-                      <div className="history-info">
-                        <div className="history-project">{item.projectName||"Unnamed Project"}</div>
-                        <div className="history-time">{item.clockIn} — {item.clockOut}</div>
-                      </div>
-                      <div className="history-right">
-                        <div className="history-duration">{item.duration}</div>
-                        <div className="history-code">{item.projectCode||"—"}</div>
-                      </div>
                     </div>
-                  );
-                }):(
-                  <div className="empty-state">No recorded sessions yet</div>
-                )}
-              </div>
 
-              {hasMore&&(
-                <div className="more-strip" onClick={()=>router.push("/dashboard/history")}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                  <span className="more-strip-text">{history.length - 6} more session{history.length-6!==1?"s":""} — View full history</span>
-                  <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="7" x2="11" y2="7"/><polyline points="8 4 11 7 8 10"/></svg>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN */}
-          <div className="right-col">
-
-            {/* TIMER */}
-            <div className="timer-card">
-              <div className="timer-section-label">Active Session</div>
-              <div className={`timer-display ${!isActive?"inactive":""}`}>
-                {isActive?formatTime(seconds):"00:00:00"}
-              </div>
-              <div className="timer-meta">
-                <div>
-                  <div className="timer-meta-label">Start Time</div>
-                  <div className="timer-meta-value">
-                    {clockInTime?new Date(clockInTime).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"--:--"}
+                    <div>
+                      <label className="ws-lab" htmlFor="ws-timesheet">What are you working on?</label>
+                      <textarea
+                        id="ws-timesheet"
+                        className="ws-ta"
+                        placeholder="Describe your current tasks"
+                        value={timesheet}
+                        onChange={e => setTimesheet(e.target.value)}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div className="timer-meta-label">Project</div>
-                  <div className="timer-meta-value">{selectedProject?.code||"—"}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* OVERVIEW */}
-            <div className="stats-card">
-              <div className="section-label">Overview</div>
-              <div className="stats-row">
-                <span className="stats-key">Current Status</span>
-                <span className={`stats-val ${isActive?"green":""}`}>{isActive?"ACTIVE":status||"OFFLINE"}</span>
-              </div>
-              <div className="stats-row">
-                <span className="stats-key">Today's Sessions</span>
-                <span className="stats-val">{todaySessions}</span>
-              </div>
-              <div className="stats-row">
-                <span className="stats-key">Today's Hours</span>
-                <span className="stats-val" style={{color:"var(--accent)"}}>{todayHours}</span>
-              </div>
-              <div className="stats-row">
-                <span className="stats-key">Total Sessions</span>
-                <span className="stats-val">{history.length}</span>
-              </div>
-              {selectedProject&&(
-                <div className="stats-row">
-                  <span className="stats-key">Active Project</span>
-                  <span className="stats-val" style={{color:"var(--accent)",fontSize:"0.72rem"}}>{selectedProject.code}</span>
-                </div>
-              )}
-            </div>
-
-            {/* ANNOUNCEMENTS */}
-            <div className="ann-card">
-              <div className="ann-header">
-                <div className="section-label" style={{marginBottom:0}}>Announcements</div>
-                {announcements.length>0&&(
-                  <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"0.6rem",color:"var(--text-muted)"}}>{announcements.length} notice{announcements.length!==1?"s":""}</span>
                 )}
               </div>
-              {announcements.length===0?(
-                <div className="ann-empty">No announcements right now.</div>
-              ):(
-                <div className="ann-list">
-                  {announcements.map(a=>{
-                    const TYPE_CFG:{[k:string]:{color:string;bg:string;border:string;label:string}} = {
-                      holiday: {color:"#22d3a2",bg:"rgba(34,211,162,0.1)", border:"rgba(34,211,162,0.2)", label:"Holiday"},
-                      alert:   {color:"#f97316",bg:"rgba(249,115,22,0.1)", border:"rgba(249,115,22,0.2)",  label:"Alert"},
-                      info:    {color:"#7c6af7",bg:"rgba(124,106,247,0.1)",border:"rgba(124,106,247,0.2)", label:"Info"},
-                      urgent:  {color:"#f87171",bg:"rgba(248,113,113,0.1)",border:"rgba(248,113,113,0.2)", label:"Urgent"},
-                    };
-                    const cfg = TYPE_CFG[a.type]||TYPE_CFG.info;
-                    const fmtDate = (d:string)=>new Intl.DateTimeFormat("en-IN",{day:"2-digit",month:"short"}).format(new Date(d));
-                    return(
-                      <div className="ann-item" key={a.id}>
-                        <div className="ann-bar" style={{background:cfg.color}}/>
-                        <div className="ann-body">
-                          <div className="ann-top">
-                            <span className="ann-title">{a.title}</span>
-                            <span className="ann-badge" style={{color:cfg.color,background:cfg.bg,borderColor:cfg.border}}>{cfg.label}</span>
-                            <span className="ann-date">{fmtDate(a.date)}</span>
-                          </div>
-                          <div className="ann-text">{a.body}</div>
+
+              {/* RECENT ACTIVITY */}
+              <div className="ws-card">
+                <div className="ws-card-h">
+                  <h2 className="ws-card-t">
+                    Recent activity
+                    {loadingHistory && <Loader2 size={15} className="ws-spin" style={{ color: "var(--text-muted)" }} />}
+                  </h2>
+                  {history.length > 0 && (
+                    <button className="ws-view-all" onClick={() => router.push("/dashboard/history")}>
+                      View all <ArrowRight size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="ws-list">
+                  {recentSix.length > 0 ? recentSix.map((item, idx) => {
+                    const parts = item.date.split("/");
+                    return (
+                      <div className="ws-item" key={idx}>
+                        <div className="ws-date">
+                          <b>{parts[0]}/{parts[1]}</b>
+                          <span>{parts[2]}</span>
+                        </div>
+                        <div className="ws-info">
+                          <div className="ws-proj">{item.projectName || "Unnamed project"}</div>
+                          <div className="ws-time">{item.clockIn} to {item.clockOut}</div>
+                        </div>
+                        <div className="ws-right-t">
+                          <div className="ws-dur">{item.duration}</div>
+                          <div className="ws-code">{item.projectCode || "No code"}</div>
                         </div>
                       </div>
                     );
-                  })}
+                  }) : (
+                    <div className="ws-empty">No sessions yet. Your first clock-in will show up here.</div>
+                  )}
                 </div>
-              )}
+
+                {hasMore && (
+                  <button className="ws-more" onClick={() => router.push("/dashboard/history")}>
+                    {history.length - 6} more session{history.length - 6 !== 1 ? "s" : ""}. View full history <ArrowRight size={14} />
+                  </button>
+                )}
+              </div>
             </div>
 
-          </div>
-        </div>
+            {/* RIGHT COLUMN */}
+            <div className="ws-right">
 
+              {/* TIMER */}
+              <div className="ws-timer">
+                <div className="ws-timer-l">Active session</div>
+                <div className={`ws-timer-d ${!isActive ? "off" : ""}`}>
+                  {isActive ? formatTime(seconds) : "00:00:00"}
+                </div>
+                <div className="ws-timer-meta">
+                  <div>
+                    <div className="ws-timer-ml">Start time</div>
+                    <div className="ws-timer-mv">
+                      {clockInTime ? new Date(clockInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div className="ws-timer-ml">Project</div>
+                    <div className="ws-timer-mv">{selectedProject?.code || "Not selected"}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CALENDAR: holidays, weekly offs and your leaves */}
+              <LeaveCalendar />
+
+              {/* ANNOUNCEMENTS */}
+              <div className="ws-card ws-ann-card">
+                <div className="ws-card-h">
+                  <h2 className="ws-card-t">Announcements</h2>
+                  {announcements.length > 0 && (
+                    <span className="ws-count">{announcements.length} notice{announcements.length !== 1 ? "s" : ""}</span>
+                  )}
+                </div>
+                {announcements.length === 0 ? (
+                  <div className="ws-empty">No announcements right now.</div>
+                ) : (
+                  <div className="ws-ann-list">
+                    {announcements.map(a => {
+                      const cfg = TYPE_CFG[a.type] || TYPE_CFG.info;
+                      return (
+                        <div className="ws-ann" key={a.id}>
+                          <div className="ws-ann-bar" style={{ background: cfg.color }} />
+                          <div className="ws-ann-body">
+                            <div className="ws-ann-top">
+                              <span className="ws-ann-title">{a.title}</span>
+                              <span className="ws-ann-badge" style={{ color: cfg.color, background: cfg.bg, borderColor: cfg.border }}>{cfg.label}</span>
+                              <span className="ws-ann-date">{fmtAnnDate(a.date)}</span>
+                            </div>
+                            <div className="ws-ann-text">{a.body}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+
+        </div>
       </div>
     </>
   );
