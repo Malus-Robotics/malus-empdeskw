@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { connectDB } from "@/lib/mongodb";
-import Notification from "@/models/notification";
+import Notification from "@/models/Notification";
 
 function getEmployeeId(req: NextRequest): string | null {
   try {
