@@ -1,6 +1,9 @@
+// src/app/dashboard/expense/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { AlertTriangle, Loader2, Plus, X } from "lucide-react";
 
 const CATEGORIES = [
   "Travel","Business Meals","Business Cards","Dues","Legal Fees","License Fees",
@@ -32,9 +35,9 @@ function fmt(d: string) {
 }
 
 const STATUS_CFG: Record<string,{color:string;bg:string;border:string}> = {
-  Pending:  {color:"#fbbf24",bg:"rgba(251,191,36,0.1)", border:"rgba(251,191,36,0.2)"},
-  Approved: {color:"#22d3a2",bg:"rgba(34,211,162,0.1)", border:"rgba(34,211,162,0.2)"},
-  Rejected: {color:"#f87171",bg:"rgba(248,113,113,0.1)",border:"rgba(248,113,113,0.2)"},
+  Pending:  {color:"var(--yellow)",bg:"var(--yellow-soft)",border:"var(--yellow-border)"},
+  Approved: {color:"var(--green)", bg:"var(--green-soft)", border:"var(--green-border)"},
+  Rejected: {color:"var(--red)",   bg:"var(--red-soft)",   border:"var(--red-border)"},
 };
 
 export default function ExpensesPage() {
@@ -53,7 +56,6 @@ export default function ExpensesPage() {
   const [rows,             setRows]             = useState<ExpenseRow[]>([emptyRow()]);
   const [submitting,       setSubmitting]       = useState(false);
   const [submitError,      setSubmitError]      = useState("");
-  const [successCount,     setSuccessCount]     = useState(0); // how many lines submitted
 
   // Tab
   const [activeTab, setActiveTab] = useState<"submit"|"history">("submit");
@@ -111,30 +113,34 @@ export default function ExpensesPage() {
       const amount = parseFloat(row.cost.replace(/[₹,]/g,""));
       if(!amount||amount<=0) continue;
 
-      const res = await fetch("/api/expense",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          amount,
-          category:    row.category,
-          description: row.description.trim(),
-          projectCode: projectCode.trim() || null,
-          date:        row.date,
-          billUrls:    [], // file upload can be wired separately
-        }),
-      });
-      const data = await res.json();
-      if(data.success) {
-        successN++;
-      } else {
-        firstError = data.error || "Failed to submit one or more expenses.";
+      try {
+        const res = await fetch("/api/expense",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            amount,
+            category:    row.category,
+            description: row.description.trim(),
+            projectCode: projectCode.trim() || null,
+            date:        row.date,
+            billUrls:    [], // file upload can be wired separately
+          }),
+        });
+        const data = await res.json();
+        if(data.success) {
+          successN++;
+        } else {
+          firstError = data.error || "Failed to submit one or more expenses.";
+        }
+      } catch {
+        firstError = "Could not reach the server. Please try again.";
       }
     }
 
     setSubmitting(false);
 
     if(successN > 0) {
-      setSuccessCount(successN);
+      toast.success(`${successN} expense${successN!==1?"s":""} submitted. Pending approval.`);
       setRows([emptyRow()]);
       setBusinessPurpose(""); setProjectCode("");
       setPeriodFrom(""); setPeriodTo(""); setCashAdvance("0");
@@ -155,225 +161,212 @@ export default function ExpensesPage() {
   return(
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
-        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        :root,[data-theme="dark"]{
-          --bg:#0a0a0f;--surface:#111118;--surface-2:#16161f;--surface-3:#1c1c28;
-          --border:rgba(255,255,255,0.06);--border-hover:rgba(255,255,255,0.12);
-          --accent:#7c6af7;--accent-soft:rgba(124,106,247,0.12);--accent-border:rgba(124,106,247,0.2);--accent-glow:rgba(124,106,247,0.25);
-          --green:#22d3a2;--green-bg:rgba(34,211,162,0.1);--green-border:rgba(34,211,162,0.2);
-          --orange:#f97316;--red:#f87171;--yellow:#fbbf24;
-          --text-primary:#f0f0f8;--text-secondary:#8888aa;--text-muted:#44445a;
+        .ep-root{min-height:100vh;background:var(--bg);font-family:var(--font-jakarta),system-ui,sans-serif;color:var(--text-primary);padding:2.25rem 2rem 4rem;}
+        .ep-root *,.ep-root *::before,.ep-root *::after{box-sizing:border-box;}
+        .ep-inner{max-width:1060px;margin:0 auto;display:flex;flex-direction:column;gap:1.4rem;}
+        [data-theme="dark"] .ep-root input[type="date"]{color-scheme:dark;}
+
+        .ep-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+        .ep-title{font-size:1.85rem;font-weight:800;letter-spacing:-0.03em;line-height:1.1;}
+        .ep-sub{font-size:0.9rem;color:var(--text-muted);margin-top:6px;}
+        .ep-user{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:100px;padding:6px 14px 6px 6px;box-shadow:var(--shadow-card);}
+        .ep-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.78rem;font-weight:800;}
+        .ep-user-name{font-size:0.85rem;font-weight:700;line-height:1.2;}
+        .ep-user-id{font-size:0.72rem;color:var(--text-muted);}
+
+        .ep-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:0.8rem;}
+        .ep-kpi{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:1rem 1.2rem;box-shadow:var(--shadow-card);}
+        .ep-kpi-l{display:flex;align-items:center;gap:7px;font-size:0.78rem;font-weight:600;color:var(--text-secondary);}
+        .ep-kpi-dot{width:8px;height:8px;border-radius:50%;background:var(--kc);}
+        .ep-kpi-n{font-size:1.8rem;font-weight:800;letter-spacing:-0.03em;line-height:1;margin-top:10px;color:var(--kc);}
+
+        .ep-tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:5px;box-shadow:var(--shadow-card);}
+        .ep-tab{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:0.65rem 0.8rem;border-radius:10px;border:0;background:transparent;color:var(--text-muted);font-family:inherit;font-size:0.84rem;font-weight:700;cursor:pointer;transition:background .15s,color .15s;}
+        .ep-tab:hover{background:var(--surface-2);color:var(--text-primary);}
+        .ep-tab.active{background:var(--accent);color:#fff;box-shadow:0 4px 12px var(--accent-glow);}
+        .ep-tab-badge{min-width:20px;height:20px;padding:0 6px;border-radius:100px;background:var(--accent-soft);color:var(--accent);font-size:0.68rem;font-weight:800;display:inline-flex;align-items:center;justify-content:center;}
+        .ep-tab.active .ep-tab-badge{background:rgba(255,255,255,0.25);color:#fff;}
+
+        .ep-card{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:1.7rem;box-shadow:var(--shadow-card);}
+        .ep-h{font-size:1.05rem;font-weight:800;letter-spacing:-0.01em;margin-bottom:1.1rem;}
+
+        /* fields */
+        .ep-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;}
+        .ep-field{display:flex;flex-direction:column;gap:6px;}
+        .ep-field label{font-size:0.78rem;font-weight:700;color:var(--text-secondary);}
+        .ep-input,.ep-select,.ep-ta{width:100%;border-radius:12px;border:1px solid var(--border);background:var(--surface);color:var(--text-primary);font-family:inherit;font-size:0.88rem;outline:none;}
+        .ep-input,.ep-select{height:44px;padding:0 0.9rem;}
+        .ep-select{cursor:pointer;}
+        .ep-ta{min-height:90px;padding:0.8rem 0.95rem;resize:vertical;line-height:1.6;}
+        .ep-input::placeholder,.ep-ta::placeholder{color:var(--text-muted);}
+        .ep-input:focus,.ep-select:focus,.ep-ta:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);}
+
+        /* itemized table */
+        .ep-table-wrap{overflow-x:auto;margin:0 -0.3rem;padding:0 0.3rem;}
+        .ep-table{width:100%;min-width:700px;border-collapse:collapse;}
+        .ep-table th{padding:0.4rem 0.5rem 0.7rem;text-align:left;font-size:0.78rem;font-weight:600;color:var(--text-muted);}
+        .ep-table td{padding:0.35rem 0.5rem;vertical-align:middle;}
+        .ep-table .ep-input,.ep-table .ep-select{height:42px;font-size:0.85rem;}
+        .ep-del{background:none;border:0;color:var(--text-muted);cursor:pointer;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;}
+        .ep-del:hover{background:var(--red-soft);color:var(--red);}
+        .ep-add{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:0.9rem;height:46px;border:1px dashed var(--border-hover);border-radius:12px;background:none;color:var(--text-secondary);font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;}
+        .ep-add:hover{border-color:var(--accent-border);color:var(--accent);background:var(--accent-soft);}
+
+        /* summary */
+        .ep-totals{display:grid;grid-template-columns:1fr 320px;gap:1.5rem;align-items:start;}
+        .ep-note{font-size:0.84rem;color:var(--text-secondary);line-height:1.8;background:var(--yellow-soft);border:1px solid var(--yellow-border);border-radius:14px;padding:1rem 1.2rem;}
+        .ep-note b{display:flex;align-items:center;gap:8px;color:var(--text-primary);font-size:0.88rem;margin-bottom:6px;}
+        .ep-note ul{padding-left:1.1rem;}
+        .ep-note strong{color:var(--text-primary);}
+        .ep-trow{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:0.8rem 0;border-bottom:1px solid var(--border);}
+        .ep-trow:last-child{border-bottom:0;}
+        .ep-tk{font-size:0.86rem;color:var(--text-secondary);}
+        .ep-tv{font-size:0.95rem;font-weight:800;font-variant-numeric:tabular-nums;}
+        .ep-tv.accent{color:var(--accent);}
+        .ep-tv.big{color:var(--green);font-size:1.3rem;}
+        .ep-adv{display:flex;align-items:center;gap:6px;}
+        .ep-adv span{font-size:0.9rem;color:var(--text-muted);}
+        .ep-adv .ep-input{width:110px;text-align:right;height:40px;}
+
+        .ep-error{display:flex;align-items:center;gap:10px;background:var(--red-soft);border:1px solid var(--red-border);border-radius:12px;padding:0.8rem 1rem;font-size:0.85rem;color:var(--red);font-weight:600;}
+        .ep-bar{display:flex;justify-content:flex-end;gap:0.8rem;align-items:center;}
+        .ep-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding:0 1.6rem;border-radius:12px;font-family:inherit;font-size:0.9rem;font-weight:700;cursor:pointer;border:1px solid transparent;transition:background .15s,border-color .15s;}
+        .ep-btn.primary{background:var(--accent);color:#fff;box-shadow:0 4px 14px var(--accent-glow);}
+        .ep-btn.primary:hover:not(:disabled){background:var(--accent-hover);}
+        .ep-btn.ghost{background:var(--surface);color:var(--text-secondary);border-color:var(--border);}
+        .ep-btn.ghost:hover{border-color:var(--border-hover);color:var(--text-primary);}
+        .ep-btn:disabled{opacity:0.5;cursor:not-allowed;box-shadow:none;}
+        .ep-spin{animation:ep-rot .8s linear infinite;}
+        @keyframes ep-rot{to{transform:rotate(360deg)}}
+
+        /* history */
+        .ep-chips{display:flex;gap:6px;margin-bottom:1.2rem;flex-wrap:wrap;}
+        .ep-chip{display:inline-flex;align-items:center;gap:6px;padding:0.45rem 1rem;border-radius:100px;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);font-family:inherit;font-size:0.8rem;font-weight:700;cursor:pointer;}
+        .ep-chip:hover{border-color:var(--border-hover);color:var(--text-primary);}
+        .ep-chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+        .ep-chip em{font-style:normal;font-size:0.72rem;opacity:0.75;}
+        .ep-list{display:flex;flex-direction:column;gap:0.7rem;}
+        .ep-exp{position:relative;display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:1rem 1.2rem 1rem 1.4rem;overflow:hidden;}
+        .ep-exp::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--sc);}
+        .ep-exp:hover{border-color:var(--border-hover);}
+        .ep-exp-d{font-size:0.92rem;font-weight:700;margin-bottom:5px;}
+        .ep-exp-m{display:flex;gap:6px 12px;flex-wrap:wrap;align-items:center;font-size:0.78rem;color:var(--text-muted);}
+        .ep-exp-code{font-weight:700;color:var(--accent);}
+        .ep-exp-r{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
+        .ep-exp-a{font-size:1.05rem;font-weight:800;font-variant-numeric:tabular-nums;}
+        .ep-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:100px;border:1px solid;font-size:0.72rem;font-weight:700;white-space:nowrap;}
+        .ep-pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;}
+        .ep-remarks{margin-top:8px;font-size:0.8rem;color:var(--red);background:var(--red-soft);border-radius:10px;padding:0.5rem 0.8rem;}
+        .ep-empty{padding:3rem 1.5rem;text-align:center;border:1px dashed var(--border);border-radius:16px;color:var(--text-muted);font-size:0.9rem;line-height:1.7;}
+        .ep-empty b{display:block;color:var(--text-primary);font-size:1rem;margin-bottom:4px;}
+
+        @media(max-width:760px){
+          .ep-grid3,.ep-totals{grid-template-columns:1fr;}
         }
-        [data-theme="light"]{
-          --bg:#f4f5f9;--surface:#ffffff;--surface-2:#f0f1f6;--surface-3:#e8eaf0;
-          --border:rgba(0,0,0,0.08);--border-hover:rgba(0,0,0,0.15);
-          --accent:#6355e8;--accent-soft:rgba(99,85,232,0.08);--accent-border:rgba(99,85,232,0.2);--accent-glow:rgba(99,85,232,0.15);
-          --green:#0fa87a;--green-bg:rgba(15,168,122,0.08);--green-border:rgba(15,168,122,0.2);
-          --orange:#ea6c0a;--red:#dc2626;--yellow:#d97706;
-          --text-primary:#0f0f1a;--text-secondary:#555570;--text-muted:#9999b5;
+        @media(max-width:640px){
+          .ep-root{padding:1.25rem 1rem 3rem;}
+          .ep-title{font-size:1.5rem;}
+          .ep-kpis{grid-template-columns:1fr 1fr;}
+          .ep-kpis .ep-kpi:last-child{grid-column:1 / -1;}
+          .ep-card{padding:1.2rem;border-radius:18px;}
+          .ep-tab{font-size:0.78rem;padding:0.6rem 0.4rem;}
+          .ep-input,.ep-select,.ep-ta{font-size:16px;} /* stops iOS zoom on focus */
+          .ep-bar{flex-direction:column-reverse;align-items:stretch;}
+          .ep-exp{grid-template-columns:1fr;}
+          .ep-exp-r{flex-direction:row;align-items:center;justify-content:space-between;}
         }
-        *{transition:background-color 0.25s ease,border-color 0.25s ease,color 0.25s ease;}
-
-        .ep-root{min-height:100vh;background:var(--bg);font-family:'Syne',sans-serif;color:var(--text-primary);padding:2.5rem 2rem 4rem;}
-        .ep-inner{max-width:1060px;margin:0 auto;display:flex;flex-direction:column;gap:1.75rem;}
-
-        .ep-header{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:1.5rem;border-bottom:1px solid var(--border);}
-        .ep-title{font-size:1.8rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:5px;}
-        .ep-subtitle{font-size:0.75rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;}
-        .ep-user{text-align:right;}
-        .ep-user-name{font-size:0.88rem;font-weight:700;margin-bottom:3px;}
-        .ep-user-id{font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:var(--text-muted);}
-
-        .sum-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
-        .sum-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:1.1rem 1.3rem;}
-        .sum-label{font-size:0.58rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);font-family:'JetBrains Mono',monospace;margin-bottom:6px;}
-        .sum-val{font-family:'JetBrains Mono',monospace;font-size:1.3rem;font-weight:800;line-height:1;}
-
-        .tabs-row{display:flex;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:5px;}
-        .tab-btn{flex:1;padding:0.6rem 1rem;border-radius:10px;font-family:'Syne',sans-serif;font-size:0.78rem;font-weight:700;border:none;cursor:pointer;transition:all 0.18s;color:var(--text-muted);background:transparent;}
-        .tab-btn:hover{color:var(--text-secondary);background:var(--surface-2);}
-        .tab-btn.active{background:var(--accent);color:#fff;box-shadow:0 0 16px var(--accent-glow);}
-        .tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:9px;background:rgba(255,255,255,0.2);font-size:0.6rem;font-weight:800;margin-left:6px;vertical-align:middle;padding:0 4px;}
-        .tab-btn:not(.active) .tab-badge{background:var(--surface-3);color:var(--text-muted);}
-
-        .ep-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:1.75rem;}
-        .section-label{font-size:0.6rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-muted);font-family:'JetBrains Mono',monospace;margin-bottom:1.25rem;}
-
-        .form-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;}
-        @media(max-width:720px){.form-grid-3{grid-template-columns:1fr;}}
-        .form-field{display:flex;flex-direction:column;gap:6px;}
-        .form-label{font-size:0.65rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);font-family:'JetBrains Mono',monospace;}
-        .form-input,.form-select,.form-textarea{background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.82rem;padding:0.75rem 1rem;border-radius:11px;outline:none;width:100%;}
-        .form-input::placeholder,.form-textarea::placeholder{color:var(--text-muted);}
-        .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);}
-        .form-textarea{resize:vertical;min-height:80px;line-height:1.6;}
-
-        .expense-table-wrap{overflow-x:auto;}
-        .expense-table{width:100%;border-collapse:collapse;min-width:680px;}
-        .expense-table th{padding:0.7rem 0.85rem;text-align:left;font-size:0.58rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-family:'JetBrains Mono',monospace;border-bottom:1px solid var(--border);}
-        .expense-table td{padding:0.55rem 0.5rem;vertical-align:top;}
-        .expense-table tbody tr{border-bottom:1px solid rgba(128,128,128,0.06);}
-        .expense-table tbody tr:last-child{border-bottom:none;}
-        .tbl-input{background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.8rem;padding:0.6rem 0.75rem;border-radius:9px;outline:none;width:100%;}
-        .tbl-input::placeholder{color:var(--text-muted);}
-        .tbl-input:focus{border-color:var(--accent-border);box-shadow:0 0 0 3px var(--accent-soft);}
-        .tbl-select{background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);font-family:'Syne',sans-serif;font-size:0.78rem;padding:0.6rem 0.75rem;border-radius:9px;outline:none;width:100%;cursor:pointer;}
-        .tbl-select:focus{border-color:var(--accent-border);}
-        .row-del-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:6px;border-radius:7px;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
-        .row-del-btn:hover{background:rgba(248,113,113,0.1);color:var(--red);}
-        .add-row-btn{display:flex;align-items:center;gap:8px;background:none;border:1px dashed var(--border);color:var(--text-muted);font-family:'Syne',sans-serif;font-size:0.78rem;font-weight:600;padding:0.65rem 1rem;border-radius:11px;cursor:pointer;transition:all 0.18s;width:100%;margin-top:0.75rem;}
-        .add-row-btn:hover{border-color:var(--accent-border);color:var(--accent);background:var(--accent-soft);}
-
-        .totals-grid{display:grid;grid-template-columns:1fr 300px;gap:1.5rem;align-items:start;}
-        @media(max-width:700px){.totals-grid{grid-template-columns:1fr;}}
-        .totals-note{font-size:0.72rem;color:var(--text-secondary);line-height:1.7;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;}
-        .totals-note strong{color:var(--orange);}
-        .totals-row{display:flex;justify-content:space-between;align-items:center;padding:0.6rem 0;border-bottom:1px solid var(--border);}
-        .totals-row:last-child{border-bottom:none;}
-        .totals-key{font-size:0.78rem;color:var(--text-secondary);}
-        .totals-val{font-family:'JetBrains Mono',monospace;font-size:0.85rem;font-weight:700;color:var(--text-primary);}
-        .totals-val.accent{color:var(--accent);font-size:1rem;}
-        .totals-val.green{color:var(--green);font-size:1.1rem;}
-        .advance-wrap{display:flex;align-items:center;gap:6px;}
-        .advance-prefix{font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:var(--text-muted);}
-
-        .submit-bar{display:flex;justify-content:flex-end;gap:1rem;align-items:center;padding-top:0.5rem;}
-        .btn-submit{display:flex;align-items:center;gap:10px;background:var(--accent);color:#fff;font-family:'Syne',sans-serif;font-size:0.82rem;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:0.8rem 2rem;border-radius:12px;border:none;cursor:pointer;box-shadow:0 0 30px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,0.15);transition:all 0.2s;}
-        .btn-submit:hover:not(:disabled){filter:brightness(1.1);transform:translateY(-1px);}
-        .btn-submit:disabled{opacity:0.45;cursor:not-allowed;transform:none;}
-        .btn-reset{background:var(--surface-3);border:1px solid var(--border);color:var(--text-muted);font-family:'Syne',sans-serif;font-size:0.82rem;font-weight:600;padding:0.8rem 1.5rem;border-radius:12px;cursor:pointer;transition:all 0.18s;}
-        .btn-reset:hover{border-color:var(--border-hover);color:var(--text-secondary);}
-        .spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;}
-        @keyframes spin{to{transform:rotate(360deg)}}
-
-        .error-box{background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:0.65rem 1rem;font-size:0.75rem;color:var(--red);font-weight:600;}
-
-        .filter-row{display:flex;gap:6px;margin-bottom:1.25rem;flex-wrap:wrap;}
-        .fp{padding:0.38rem 0.9rem;border-radius:100px;border:1px solid var(--border);font-size:0.72rem;font-weight:700;font-family:'Syne',sans-serif;cursor:pointer;transition:all 0.18s;background:var(--surface-2);color:var(--text-muted);}
-        .fp:hover{border-color:var(--border-hover);color:var(--text-secondary);}
-        .fp.active{background:var(--accent-soft);border-color:var(--accent-border);color:var(--accent);}
-
-        .exp-list{display:flex;flex-direction:column;gap:0.75rem;}
-        .exp-row{display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start;background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:1rem 1.2rem;transition:border-color 0.2s;}
-        .exp-row:hover{border-color:var(--border-hover);}
-        .exp-desc{font-size:0.85rem;font-weight:700;margin-bottom:4px;}
-        .exp-meta{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:0.68rem;color:var(--text-muted);font-family:'JetBrains Mono',monospace;}
-        .exp-meta span{display:flex;align-items:center;gap:3px;}
-        .exp-right{display:flex;flex-direction:column;align-items:flex-end;gap:7px;}
-        .exp-amount{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:800;color:var(--text-primary);}
-        .sc{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:100px;font-size:0.58rem;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:0.06em;text-transform:uppercase;border:1px solid;white-space:nowrap;}
-        .sc-dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0;}
-        .exp-remarks{font-size:0.68rem;color:var(--red);font-style:italic;font-family:'JetBrains Mono',monospace;}
-        .empty-state{padding:3rem 1.5rem;text-align:center;border:1px dashed var(--border);border-radius:16px;color:var(--text-muted);font-size:0.8rem;}
-
-        .toast{position:fixed;bottom:1.5rem;right:1.5rem;z-index:999;background:var(--surface);border:1px solid var(--green-border);border-radius:16px;padding:1rem 1.4rem;display:flex;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.3);animation:slideUp 0.3s ease;max-width:340px;}
-        @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-        .toast-icon{width:34px;height:34px;border-radius:10px;flex-shrink:0;background:var(--green-bg);border:1px solid var(--green-border);display:flex;align-items:center;justify-content:center;}
-        .toast-title{font-size:0.82rem;font-weight:800;color:var(--text-primary);margin-bottom:2px;}
-        .toast-sub{font-size:0.7rem;font-family:'JetBrains Mono',monospace;color:var(--text-muted);}
-        .toast-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:2px;margin-left:auto;}
       `}</style>
-
-      {/* Toast */}
-      {successCount > 0 && (
-        <div className="toast">
-          <div className="toast-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-          <div>
-            <div className="toast-title">Submitted Successfully</div>
-            <div className="toast-sub">{successCount} expense{successCount!==1?"s":""} submitted · Pending approval</div>
-          </div>
-          <button className="toast-close" onClick={()=>setSuccessCount(0)}>✕</button>
-        </div>
-      )}
 
       <div className="ep-root">
         <div className="ep-inner">
 
           {/* Header */}
-          <div className="ep-header">
+          <div className="ep-head">
             <div>
-              <h1 className="ep-title">Expense Report</h1>
-              <p className="ep-subtitle">Advance / Reimbursement Submission</p>
+              <h1 className="ep-title">Expenses</h1>
+              <p className="ep-sub">Claim advances and reimbursements, and follow their approval.</p>
             </div>
-            <div className="ep-user">
-              <div className="ep-user-name">{employeeName||"—"}</div>
-              <div className="ep-user-id">#{employeeId||"Loading…"}</div>
-            </div>
+            {employeeName && (
+              <div className="ep-user">
+                <div className="ep-avatar">{employeeName.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()}</div>
+                <div>
+                  <div className="ep-user-name">{employeeName}</div>
+                  <div className="ep-user-id">#{employeeId||"…"}</div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Summary */}
-          <div className="sum-strip">
-            <div className="sum-card"><div className="sum-label">Total Submitted</div><div className="sum-val" style={{color:"var(--accent)"}}>₹{totalSubmitted.toLocaleString("en-IN")}</div></div>
-            <div className="sum-card"><div className="sum-label">Approved</div><div className="sum-val" style={{color:"var(--green)"}}>₹{totalApproved.toLocaleString("en-IN")}</div></div>
-            <div className="sum-card"><div className="sum-label">Pending Review</div><div className="sum-val" style={{color:"var(--yellow)"}}>{pendingCount} items</div></div>
+          <div className="ep-kpis">
+            <div className="ep-kpi" style={{["--kc" as any]:"var(--accent)"}}><span className="ep-kpi-l"><span className="ep-kpi-dot"/>Total submitted</span><div className="ep-kpi-n">₹{totalSubmitted.toLocaleString("en-IN")}</div></div>
+            <div className="ep-kpi" style={{["--kc" as any]:"var(--green)"}}><span className="ep-kpi-l"><span className="ep-kpi-dot"/>Approved</span><div className="ep-kpi-n">₹{totalApproved.toLocaleString("en-IN")}</div></div>
+            <div className="ep-kpi" style={{["--kc" as any]:"var(--yellow)"}}><span className="ep-kpi-l"><span className="ep-kpi-dot"/>Pending review</span><div className="ep-kpi-n">{pendingCount} item{pendingCount!==1?"s":""}</div></div>
           </div>
 
           {/* Tabs */}
-          <div className="tabs-row">
-            <button className={`tab-btn ${activeTab==="submit"?"active":""}`} onClick={()=>setActiveTab("submit")}>Submit Expenses</button>
-            <button className={`tab-btn ${activeTab==="history"?"active":""}`} onClick={()=>setActiveTab("history")}>
-              My Claims {pendingCount>0&&<span className="tab-badge">{pendingCount}</span>}
+          <div className="ep-tabs" role="tablist">
+            <button role="tab" aria-selected={activeTab==="submit"} className={`ep-tab ${activeTab==="submit"?"active":""}`} onClick={()=>setActiveTab("submit")}>New claim</button>
+            <button role="tab" aria-selected={activeTab==="history"} className={`ep-tab ${activeTab==="history"?"active":""}`} onClick={()=>setActiveTab("history")}>
+              My claims {pendingCount>0&&<span className="ep-tab-badge">{pendingCount}</span>}
             </button>
           </div>
 
           {/* ═══ SUBMIT TAB ═══ */}
           {activeTab==="submit"&&(<>
-            {/* Context fields */}
             <div className="ep-card">
-              <div className="section-label">Claim Context</div>
-              <div className="form-grid-3" style={{marginBottom:"1rem"}}>
-                <div className="form-field">
-                  <label className="form-label">Project / PO Number</label>
-                  <select className="form-select" value={projectCode} onChange={e=>setProjectCode(e.target.value)}>
-                    <option value="">— Select project —</option>
+              <h2 className="ep-h">Claim details</h2>
+              <div className="ep-grid3">
+                <div className="ep-field">
+                  <label htmlFor="ep-project">Project / PO number</label>
+                  <select id="ep-project" className="ep-select" value={projectCode} onChange={e=>setProjectCode(e.target.value)}>
+                    <option value="">Select a project</option>
                     {projects.map(p=><option key={p.id} value={p.code}>{p.code} · {p.name}</option>)}
-                    <option value="OTHER">Other / No project</option>
+                    <option value="OTHER">Other / no project</option>
                   </select>
                 </div>
-                <div className="form-field">
-                  <label className="form-label">Expense Period From</label>
-                  <input type="date" className="form-input" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}/>
+                <div className="ep-field">
+                  <label htmlFor="ep-from">Expense period from</label>
+                  <input id="ep-from" type="date" className="ep-input" value={periodFrom} onChange={e=>setPeriodFrom(e.target.value)}/>
                 </div>
-                <div className="form-field">
-                  <label className="form-label">Expense Period To</label>
-                  <input type="date" className="form-input" value={periodTo} onChange={e=>setPeriodTo(e.target.value)}/>
+                <div className="ep-field">
+                  <label htmlFor="ep-to">Expense period to</label>
+                  <input id="ep-to" type="date" className="ep-input" value={periodTo} min={periodFrom||undefined} onChange={e=>setPeriodTo(e.target.value)}/>
                 </div>
               </div>
-              <div className="form-field">
-                <label className="form-label">Business Purpose</label>
-                <textarea className="form-textarea" value={businessPurpose} onChange={e=>setBusinessPurpose(e.target.value)} placeholder="Describe the business purpose of these expenses…"/>
+              <div className="ep-field">
+                <label htmlFor="ep-purpose">Business purpose</label>
+                <textarea id="ep-purpose" className="ep-ta" value={businessPurpose} onChange={e=>setBusinessPurpose(e.target.value)} placeholder="Describe the business purpose of these expenses"/>
               </div>
             </div>
 
-            {/* Expense rows */}
             <div className="ep-card">
-              <div className="section-label">Itemized Expenses</div>
-              <div className="expense-table-wrap">
-                <table className="expense-table">
+              <h2 className="ep-h">Expense items</h2>
+              <div className="ep-table-wrap">
+                <table className="ep-table">
                   <thead>
                     <tr>
-                      <th style={{width:"110px"}}>Date</th>
+                      <th style={{width:"150px"}}>Date</th>
                       <th>Description</th>
-                      <th style={{width:"160px"}}>Category</th>
-                      <th style={{width:"120px"}}>Amount (₹)</th>
-                      <th style={{width:"40px"}}></th>
+                      <th style={{width:"180px"}}>Category</th>
+                      <th style={{width:"140px"}}>Amount (₹)</th>
+                      <th style={{width:"44px"}}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map(row=>(
                       <tr key={row.id}>
-                        <td><input type="date" className="tbl-input" value={row.date} onChange={e=>updateRow(row.id,"date",e.target.value)}/></td>
-                        <td><input className="tbl-input" value={row.description} onChange={e=>updateRow(row.id,"description",e.target.value)} placeholder="Route, vendor, purpose…"/></td>
+                        <td><input type="date" className="ep-input" aria-label="Date" value={row.date} onChange={e=>updateRow(row.id,"date",e.target.value)}/></td>
+                        <td><input className="ep-input" aria-label="Description" value={row.description} onChange={e=>updateRow(row.id,"description",e.target.value)} placeholder="Route, vendor or purpose"/></td>
                         <td>
-                          <select className="tbl-select" value={row.category} onChange={e=>updateRow(row.id,"category",e.target.value)}>
+                          <select className="ep-select" aria-label="Category" value={row.category} onChange={e=>updateRow(row.id,"category",e.target.value)}>
                             {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
                           </select>
                         </td>
-                        <td><input className="tbl-input" value={row.cost} onChange={e=>updateRow(row.id,"cost",e.target.value)} placeholder="0.00" style={{fontFamily:"'JetBrains Mono',monospace"}}/></td>
+                        <td><input className="ep-input" aria-label="Amount in rupees" inputMode="decimal" value={row.cost} onChange={e=>updateRow(row.id,"cost",e.target.value)} placeholder="0.00"/></td>
                         <td>
-                          <button className="row-del-btn" onClick={()=>removeRow(row.id)}>
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>
+                          <button className="ep-del" onClick={()=>removeRow(row.id)} aria-label="Remove row" disabled={rows.length===1} style={rows.length===1?{opacity:0.3,cursor:"not-allowed"}:undefined}>
+                            <X size={16}/>
                           </button>
                         </td>
                       </tr>
@@ -381,43 +374,41 @@ export default function ExpensesPage() {
                   </tbody>
                 </table>
               </div>
-              <button className="add-row-btn" onClick={addRow}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="7" y1="2" x2="7" y2="12"/><line x1="2" y1="7" x2="12" y2="7"/></svg>
-                Add Expense Row
-              </button>
+              <button className="ep-add" onClick={addRow}><Plus size={16}/> Add another item</button>
             </div>
 
-            {/* Summary */}
             <div className="ep-card">
-              <div className="section-label">Summary</div>
-              <div className="totals-grid">
-                <div className="totals-note">
-                  <strong>⚠ Reminders</strong><br/>
-                  • Attach all original receipts to the physical expense form.<br/>
-                  • Mileage reimbursement for personal car = <strong>₹7.5 / km</strong>.<br/>
-                  • Claims submitted without bills may not be processed.<br/>
-                  • Submit within <strong>30 days</strong> of incurring the expense.
+              <h2 className="ep-h">Summary</h2>
+              <div className="ep-totals">
+                <div className="ep-note">
+                  <b><AlertTriangle size={16}/> Before you submit</b>
+                  <ul>
+                    <li>Attach all original receipts to the physical expense form.</li>
+                    <li>Mileage reimbursement for a personal car is <strong>₹7.5 per km</strong>.</li>
+                    <li>Claims submitted without bills may not be processed.</li>
+                    <li>Submit within <strong>30 days</strong> of incurring the expense.</li>
+                  </ul>
                 </div>
                 <div>
-                  <div className="totals-row"><span className="totals-key">Subtotal</span><span className="totals-val accent">₹{subtotal.toFixed(2)}</span></div>
-                  <div className="totals-row">
-                    <span className="totals-key">Less Cash Advance</span>
-                    <div className="advance-wrap">
-                      <span className="advance-prefix">₹</span>
-                      <input className="tbl-input" value={cashAdvance} onChange={e=>setCashAdvance(e.target.value)} style={{width:"90px",fontFamily:"'JetBrains Mono',monospace",textAlign:"right"}}/>
+                  <div className="ep-trow"><span className="ep-tk">Subtotal</span><span className="ep-tv accent">₹{subtotal.toFixed(2)}</span></div>
+                  <div className="ep-trow">
+                    <label className="ep-tk" htmlFor="ep-adv">Less cash advance</label>
+                    <div className="ep-adv">
+                      <span>₹</span>
+                      <input id="ep-adv" className="ep-input" inputMode="decimal" value={cashAdvance} onChange={e=>setCashAdvance(e.target.value)}/>
                     </div>
                   </div>
-                  <div className="totals-row"><span className="totals-key" style={{fontWeight:700,color:"var(--text-primary)"}}>Total Reimbursement</span><span className="totals-val green">₹{totalReimbursement.toFixed(2)}</span></div>
+                  <div className="ep-trow"><span className="ep-tk" style={{fontWeight:700,color:"var(--text-primary)"}}>Total reimbursement</span><span className="ep-tv big">₹{totalReimbursement.toFixed(2)}</span></div>
                 </div>
               </div>
             </div>
 
-            {submitError&&<div className="error-box">{submitError}</div>}
+            {submitError&&<div className="ep-error"><AlertTriangle size={16}/>{submitError}</div>}
 
-            <div className="submit-bar">
-              <button className="btn-reset" onClick={()=>setRows([emptyRow()])}>Clear Rows</button>
-              <button className="btn-submit" disabled={submitting} onClick={handleSubmit}>
-                {submitting?<><span className="spinner"/> Submitting…</>:<>Submit Expense Report</>}
+            <div className="ep-bar">
+              <button className="ep-btn ghost" onClick={()=>setRows([emptyRow()])} disabled={submitting}>Clear items</button>
+              <button className="ep-btn primary" disabled={submitting} onClick={handleSubmit}>
+                {submitting?<><Loader2 size={16} className="ep-spin"/> Submitting…</>:"Submit claim"}
               </button>
             </div>
           </>)}
@@ -425,39 +416,40 @@ export default function ExpensesPage() {
           {/* ═══ HISTORY TAB ═══ */}
           {activeTab==="history"&&(
             <div className="ep-card">
-              <div className="section-label">My Expense Claims</div>
-              <div className="filter-row">
+              <h2 className="ep-h">My claims</h2>
+              <div className="ep-chips">
                 {(["All","Pending","Approved","Rejected"] as const).map(f=>(
-                  <button key={f} className={`fp ${histFilter===f?"active":""}`} onClick={()=>setHistFilter(f)}>
-                    {f}{f!=="All"&&<span style={{marginLeft:"5px",opacity:0.7,fontFamily:"'JetBrains Mono',monospace"}}>{expenses.filter(e=>e.status===f).length}</span>}
+                  <button key={f} className={`ep-chip ${histFilter===f?"on":""}`} onClick={()=>setHistFilter(f)}>
+                    {f}{f!=="All"&&<em>{expenses.filter(e=>e.status===f).length}</em>}
                   </button>
                 ))}
               </div>
               {loadingExp?(
-                <div style={{textAlign:"center",padding:"2rem",color:"var(--text-muted)",fontSize:"0.78rem"}}>Loading…</div>
+                <div className="ep-empty">Loading…</div>
               ):filteredExp.length===0?(
-                <div className="empty-state">No {histFilter!=="All"?histFilter.toLowerCase():""} expense claims found.</div>
+                <div className="ep-empty">
+                  <b>{histFilter==="All"?"No claims yet":`No ${histFilter.toLowerCase()} claims`}</b>
+                  {histFilter==="All"?"Submit your first claim from the New claim tab.":"Try another filter."}
+                </div>
               ):(
-                <div className="exp-list">
+                <div className="ep-list">
                   {filteredExp.map(e=>{
                     const sc=STATUS_CFG[e.status];
                     return(
-                      <div className="exp-row" key={e.id}>
+                      <div className="ep-exp" key={e.id} style={{["--sc" as any]:sc.color}}>
                         <div>
-                          <div className="exp-desc">{e.description}</div>
-                          <div className="exp-meta">
+                          <div className="ep-exp-d">{e.description}</div>
+                          <div className="ep-exp-m">
                             <span>{fmt(e.date)}</span>
-                            <span>·</span>
                             <span>{e.category}</span>
-                            {e.projectCode&&<><span>·</span><span style={{color:"var(--accent)"}}>{e.projectCode}</span></>}
-                            <span>·</span>
+                            {e.projectCode&&<span className="ep-exp-code">{e.projectCode}</span>}
                             <span>Submitted {fmt(e.submittedOn)}</span>
                           </div>
-                          {e.remarks&&<div className="exp-remarks" style={{marginTop:"5px"}}>Remarks: {e.remarks}</div>}
+                          {e.remarks&&<div className="ep-remarks"><strong>Remarks:</strong> {e.remarks}</div>}
                         </div>
-                        <div className="exp-right">
-                          <div className="exp-amount">₹{e.amount.toLocaleString("en-IN")}</div>
-                          <span className="sc" style={{color:sc.color,background:sc.bg,borderColor:sc.border}}><span className="sc-dot"/>{e.status}</span>
+                        <div className="ep-exp-r">
+                          <div className="ep-exp-a">₹{e.amount.toLocaleString("en-IN")}</div>
+                          <span className="ep-pill" style={{color:sc.color,background:sc.bg,borderColor:sc.border}}>{e.status}</span>
                         </div>
                       </div>
                     );
