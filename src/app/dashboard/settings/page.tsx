@@ -1,363 +1,250 @@
+// src/app/dashboard/settings/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Check, Moon, Sun } from "lucide-react";
+import {
+  ACCENTS, AccentKey, FontSize, Theme,
+  applyAccent, applyCompact, applyFontSize, readPrefs,
+} from "@/lib/prefs";
 
-type Theme = "dark" | "light";
-type AccentColor = "purple" | "blue" | "green" | "orange";
-type FontSize = "small" | "medium" | "large";
-
-const ACCENT_OPTIONS: { key: AccentColor; label: string; dark: string; light: string }[] = [
-  { key: "purple", label: "Violet",   dark: "#7c6af7", light: "#6355e8" },
-  { key: "blue",   label: "Blue",     dark: "#38bdf8", light: "#0284c7" },
-  { key: "green",  label: "Emerald",  dark: "#22d3a2", light: "#0fa87a" },
-  { key: "orange", label: "Amber",    dark: "#f97316", light: "#ea6c0a" },
+const FONT_OPTIONS: { key: FontSize; label: string; sub: string; px: string }[] = [
+  { key: "small",  label: "Small",   sub: "Smaller text", px: "0.85rem" },
+  { key: "medium", label: "Default", sub: "Recommended",  px: "0.95rem" },
+  { key: "large",  label: "Large",   sub: "Larger text",  px: "1.1rem" },
 ];
 
 export default function SettingsPage() {
-  const [employeeId, setEmployeeId]   = useState("");
-  const [employeeName, setEmployeeName] = useState("");
-  const [email, setEmail]             = useState("");
+  const [me, setMe] = useState({ employeeId: "", name: "", email: "" });
+  const [theme, setTheme] = useState<Theme>("light");
+  const [accent, setAccent] = useState<AccentKey>("indigo");
+  const [fontSize, setFontSize] = useState<FontSize>("medium");
+  const [compact, setCompact] = useState(false);
+  const [notif, setNotif] = useState({ leave: true, expense: true, weekly: false });
+  const [saved, setSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "dark";
-    return (localStorage.getItem("mr-theme") as Theme) || "dark";
-  });
-  const [accent, setAccentState]       = useState<AccentColor>("purple");
-  const [fontSize, setFontSizeState]   = useState<FontSize>("medium");
-  const [compactMode, setCompactMode]  = useState(false);
-  const [saved, setSaved]             = useState(false);
-
-  // ── Load all settings on mount ──
   useEffect(() => {
-    // Load user
     fetch("/api/me").then(r => r.json()).then(d => {
-      if (d.employeeId) setEmployeeId(d.employeeId);
-      if (d.name)       setEmployeeName(d.name);
-      if (d.email)      setEmail(d.email);
+      setMe({ employeeId: d.employeeId || "", name: d.name || "", email: d.email || "" });
     }).catch(() => {});
 
-    // Load saved prefs
-    const savedTheme   = localStorage.getItem("mr-theme")      as Theme       | null;
-    const savedAccent  = localStorage.getItem("mr-accent")     as AccentColor | null;
-    const savedFont    = localStorage.getItem("mr-font-size")  as FontSize    | null;
-    const savedCompact = localStorage.getItem("mr-compact");
-
-    if (savedTheme)   setThemeState(savedTheme);
-    if (savedAccent)  setAccentState(savedAccent);
-    if (savedFont)    setFontSizeState(savedFont);
-    if (savedCompact) setCompactMode(savedCompact === "true");
+    const p = readPrefs();
+    setAccent(p.accent); setFontSize(p.fontSize); setCompact(p.compact); setNotif(p.notif);
+    setTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+    return () => { if (timer.current) clearTimeout(timer.current); };
   }, []);
 
-  // ── Apply theme ──
-  function applyTheme(t: Theme) {
-    setThemeState(t);
-    document.documentElement.setAttribute("data-theme", t);
-    localStorage.setItem("mr-theme", t);
-    // Notify layout
-    if ((window as any).__setMRTheme) (window as any).__setMRTheme(t);
-  }
-
-  // ── Apply accent color ──
-  function applyAccent(a: AccentColor) {
-    setAccentState(a);
-    localStorage.setItem("mr-accent", a);
-    const opt    = ACCENT_OPTIONS.find(o => o.key === a)!;
-    const isDark = document.documentElement.getAttribute("data-theme") !== "light";
-    const color  = isDark ? opt.dark : opt.light;
-    document.documentElement.style.setProperty("--accent", color);
-    document.documentElement.style.setProperty("--accent-glow", color + "44");
-    document.documentElement.style.setProperty("--accent-border", color + "40");
-    document.documentElement.style.setProperty("--accent-soft", color + "18");
-  }
-
-  // ── Apply font size ──
-  function applyFontSize(f: FontSize) {
-    setFontSizeState(f);
-    localStorage.setItem("mr-font-size", f);
-    const map = { small: "13px", medium: "14px", large: "16px" };
-    document.documentElement.style.setProperty("--base-font-size", map[f]);
-  }
-
-  // ── Apply compact ──
-  function applyCompact(v: boolean) {
-    setCompactMode(v);
-    localStorage.setItem("mr-compact", String(v));
-  }
-
-  // ── Save confirmation flash ──
-  function flashSaved() {
+  // every change is stored on this device straight away; this just confirms it
+  function flash() {
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setSaved(false), 1800);
+  }
+  const store = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
+
+  function chooseTheme(t: Theme) {
+    setTheme(t);
+    document.documentElement.setAttribute("data-theme", t);
+    store("mr-theme", t);
+    (window as any).__setMRTheme?.(t);
+    applyAccent(accent, t);
+    flash();
+  }
+  function chooseAccent(a: AccentKey) { setAccent(a); store("mr-accent", a); applyAccent(a, theme); flash(); }
+  function chooseFont(f: FontSize) { setFontSize(f); store("mr-font-size", f); applyFontSize(f); flash(); }
+  function toggleCompact() { const v = !compact; setCompact(v); store("mr-compact", String(v)); applyCompact(v); flash(); }
+  function toggleNotif(k: "leave" | "expense" | "weekly") {
+    const next = { ...notif, [k]: !notif[k] };
+    setNotif(next); store("mr-notif", JSON.stringify(next)); flash();
   }
 
   return (
     <>
       <style>{`
-        :root, [data-theme="dark"] {
-          --bg:#0a0a0f; --surface:#111118; --surface-2:#16161f; --surface-3:#1c1c28;
-          --border:rgba(255,255,255,0.06); --border-hover:rgba(255,255,255,0.12);
-          --accent:#7c6af7; --accent-soft:rgba(124,106,247,0.12); --accent-border:rgba(124,106,247,0.2); --accent-glow:rgba(124,106,247,0.25);
-          --green:#22d3a2; --green-bg:rgba(34,211,162,0.1); --green-border:rgba(34,211,162,0.2);
-          --orange:#f97316; --red:#f87171;
-          --text-primary:#f0f0f8; --text-secondary:#8888aa; --text-muted:#44445a;
+        .sp-root{min-height:100vh;background:var(--bg);color:var(--text-primary);font-family:var(--font-jakarta),system-ui,sans-serif;padding:2.25rem 2rem 4rem;overflow-x:clip;}
+        .sp-root *,.sp-root *::before,.sp-root *::after{box-sizing:border-box;}
+        .sp-inner{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:1.4rem;}
+
+        .sp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+        .sp-title{font-size:1.85rem;font-weight:800;letter-spacing:-0.03em;line-height:1.1;}
+        .sp-sub{font-size:0.9rem;color:var(--text-muted);margin-top:6px;}
+        .sp-saved{display:inline-flex;align-items:center;gap:6px;font-size:0.78rem;font-weight:700;color:var(--green);background:var(--green-soft);border:1px solid var(--green-border);border-radius:100px;padding:6px 12px;opacity:0;transform:translateY(2px);transition:opacity .2s,transform .2s;}
+        .sp-saved.show{opacity:1;transform:none;}
+
+        .sp-card{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:1.6rem;box-shadow:var(--shadow-card);}
+        .sp-card-t{font-size:1.05rem;font-weight:800;letter-spacing:-0.01em;margin-bottom:1.3rem;}
+
+        .sp-group + .sp-group{margin-top:1.6rem;padding-top:1.6rem;border-top:1px solid var(--border);}
+        .sp-gname{font-size:0.9rem;font-weight:700;}
+        .sp-gdesc{font-size:0.82rem;color:var(--text-muted);margin:3px 0 0.95rem;line-height:1.5;}
+
+        /* theme */
+        .sp-themes{display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;}
+        .sp-theme{display:flex;align-items:center;gap:12px;padding:0.8rem 0.95rem;border-radius:14px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-family:inherit;color:inherit;text-align:left;min-height:64px;}
+        .sp-theme:hover{border-color:var(--border-hover);}
+        .sp-theme.on{border-color:var(--accent);background:var(--accent-soft);}
+        .sp-thumb{width:44px;height:34px;border-radius:9px;border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+        .sp-thumb.light{background:linear-gradient(135deg,#F4F6F9,#FFFFFF);color:#475569;}
+        .sp-thumb.dark{background:linear-gradient(135deg,#131313,#222);color:#e5e5e5;}
+        .sp-tname{font-size:0.9rem;font-weight:700;}
+        .sp-tsub{font-size:0.78rem;color:var(--text-muted);margin-top:1px;}
+        .sp-tick{margin-left:auto;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;opacity:0;flex-shrink:0;}
+        .sp-theme.on .sp-tick{opacity:1;}
+
+        /* accent */
+        .sp-accents{display:flex;gap:1rem;flex-wrap:wrap;}
+        .sp-acc{display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:none;cursor:pointer;font-family:inherit;color:var(--text-secondary);padding:0;}
+        .sp-swatch{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);outline:2px solid transparent;outline-offset:3px;transition:outline-color .15s;}
+        .sp-acc.on .sp-swatch{outline-color:var(--text-primary);}
+        .sp-acc:hover .sp-swatch{outline-color:var(--border-hover);}
+        .sp-acc.on:hover .sp-swatch{outline-color:var(--text-primary);}
+        .sp-acc span{font-size:0.78rem;font-weight:600;}
+
+        /* text size */
+        .sp-sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:0.7rem;}
+        .sp-size{padding:0.75rem 0.5rem;border-radius:14px;border:1px solid var(--border);background:var(--surface);cursor:pointer;text-align:center;font-family:inherit;color:inherit;}
+        .sp-size:hover{border-color:var(--border-hover);}
+        .sp-size.on{border-color:var(--accent);background:var(--accent-soft);}
+        .sp-size b{display:block;font-weight:800;}
+        .sp-size.on b{color:var(--accent);}
+        .sp-size small{display:block;font-size:0.74rem;color:var(--text-muted);margin-top:2px;}
+
+        /* rows + switches */
+        .sp-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0.95rem 0;border-bottom:1px solid var(--border);}
+        .sp-row:first-of-type{padding-top:0;}
+        .sp-row:last-child{border-bottom:none;padding-bottom:0;}
+        .sp-rname{font-size:0.9rem;font-weight:700;}
+        .sp-rdesc{font-size:0.82rem;color:var(--text-muted);margin-top:3px;line-height:1.5;}
+        .sp-switch{width:46px;height:26px;border-radius:100px;border:1px solid var(--border-hover);background:var(--surface-3);position:relative;cursor:pointer;flex-shrink:0;padding:0;transition:background .2s,border-color .2s;}
+        .sp-switch i{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:transform .2s;}
+        .sp-switch[aria-checked="true"]{background:var(--accent);border-color:var(--accent);}
+        .sp-switch[aria-checked="true"] i{transform:translateX(20px);}
+        .sp-note{font-size:0.78rem;color:var(--text-muted);margin-top:1rem;line-height:1.5;}
+
+        /* account */
+        .sp-acct{display:grid;grid-template-columns:130px 1fr;gap:0.2rem 1rem;align-items:baseline;padding:0.8rem 0;border-bottom:1px solid var(--border);}
+        .sp-acct:first-of-type{padding-top:0;}
+        .sp-acct:last-child{border-bottom:none;padding-bottom:0;}
+        .sp-al{font-size:0.82rem;font-weight:600;color:var(--text-muted);}
+        .sp-av{font-size:0.9rem;font-weight:700;min-width:0;overflow-wrap:anywhere;}
+
+        .sp-switch:focus-visible,.sp-theme:focus-visible,.sp-size:focus-visible,.sp-acc:focus-visible .sp-swatch{outline:2px solid var(--accent);outline-offset:3px;}
+
+        @media(max-width:640px){
+          .sp-root{padding:1.25rem 1rem 3rem;}
+          .sp-title{font-size:1.5rem;}
+          .sp-card{padding:1.2rem;border-radius:18px;}
+          .sp-themes{grid-template-columns:1fr;}
+          .sp-acct{grid-template-columns:1fr;}
+          .sp-al{font-size:0.76rem;}
         }
-        [data-theme="light"] {
-          --bg:#f4f5f9; --surface:#ffffff; --surface-2:#f0f1f6; --surface-3:#e8eaf0;
-          --border:rgba(0,0,0,0.08); --border-hover:rgba(0,0,0,0.15);
-          --accent:#6355e8; --accent-soft:rgba(99,85,232,0.08); --accent-border:rgba(99,85,232,0.2); --accent-glow:rgba(99,85,232,0.15);
-          --green:#0fa87a; --green-bg:rgba(15,168,122,0.08); --green-border:rgba(15,168,122,0.2);
-          --orange:#ea6c0a; --red:#dc2626;
-          --text-primary:#0f0f1a; --text-secondary:#555570; --text-muted:#9999b5;
-        }
-        * { transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease; }
-
-        .sp-root { min-height:100vh; background:var(--bg); font-family:'Syne',sans-serif; color:var(--text-primary); padding:2.5rem 2rem 4rem; }
-        .sp-inner { max-width:720px; margin:0 auto; display:flex; flex-direction:column; gap:1.75rem; }
-
-        /* Header */
-        .sp-header { padding-bottom:1.5rem; border-bottom:1px solid var(--border); }
-        .sp-title { font-size:1.8rem; font-weight:800; letter-spacing:-0.03em; margin-bottom:5px; }
-        .sp-subtitle { font-size:0.75rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; letter-spacing:0.05em; }
-
-        /* Card */
-        .sp-card { background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:1.75rem; }
-        .section-label { font-size:0.6rem; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-muted); font-family:'JetBrains Mono',monospace; margin-bottom:1.25rem; }
-
-        /* Setting row */
-        .setting-row { display:flex; align-items:center; justify-content:space-between; padding:0.9rem 0; border-bottom:1px solid var(--border); gap:1rem; }
-        .setting-row:last-child { border-bottom:none; padding-bottom:0; }
-        .setting-row:first-of-type { padding-top:0; }
-        .setting-info { flex:1; min-width:0; }
-        .setting-name { font-size:0.85rem; font-weight:700; color:var(--text-primary); margin-bottom:3px; }
-        .setting-desc { font-size:0.72rem; color:var(--text-muted); line-height:1.5; }
-
-        /* Toggle */
-        .toggle-pill { width:40px; height:22px; border-radius:100px; background:var(--surface-3); border:1px solid var(--border); position:relative; cursor:pointer; transition:background 0.25s; flex-shrink:0; }
-        .toggle-pill.on { background:var(--accent); border-color:var(--accent); }
-        .toggle-thumb { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--text-muted); transition:transform 0.25s,background 0.25s; }
-        .toggle-pill.on .toggle-thumb { transform:translateX(18px); background:#fff; }
-
-        /* Theme selector */
-        .theme-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
-        .theme-option {
-          display:flex; align-items:center; gap:10px; padding:0.85rem 1rem;
-          border-radius:13px; border:1px solid var(--border); background:var(--surface-2);
-          cursor:pointer; transition:all 0.18s;
-        }
-        .theme-option:hover { border-color:var(--border-hover); }
-        .theme-option.selected { border-color:var(--accent-border); background:var(--accent-soft); }
-        .theme-preview { width:36px; height:28px; border-radius:7px; border:1px solid var(--border); overflow:hidden; flex-shrink:0; position:relative; }
-        .theme-preview-dark { background:linear-gradient(135deg,#0a0a0f 0%,#111118 100%); }
-        .theme-preview-light { background:linear-gradient(135deg,#f4f5f9 0%,#ffffff 100%); }
-        .theme-preview-dot { position:absolute; bottom:4px; right:4px; width:6px; height:6px; border-radius:50%; }
-        .theme-label { font-size:0.82rem; font-weight:700; color:var(--text-primary); }
-        .theme-sub { font-size:0.65rem; color:var(--text-muted); }
-        .theme-check { margin-left:auto; width:16px; height:16px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.18s; flex-shrink:0; }
-        .theme-option.selected .theme-check { opacity:1; }
-        .theme-check svg { width:9px; height:9px; stroke:#fff; }
-
-        /* Accent picker */
-        .accent-grid { display:flex; gap:10px; flex-wrap:wrap; }
-        .accent-swatch {
-          width:36px; height:36px; border-radius:10px; cursor:pointer;
-          border:2px solid transparent; transition:all 0.18s;
-          display:flex; align-items:center; justify-content:center;
-          position:relative;
-        }
-        .accent-swatch.selected { border-color:#fff; transform:scale(1.1); }
-        .accent-swatch svg { width:14px; height:14px; stroke:#fff; opacity:0; transition:opacity 0.18s; }
-        .accent-swatch.selected svg { opacity:1; }
-        .accent-label { font-size:0.65rem; color:var(--text-muted); margin-top:6px; text-align:center; font-family:'JetBrains Mono',monospace; }
-
-        /* Font size */
-        .font-grid { display:flex; gap:8px; }
-        .font-option {
-          flex:1; padding:0.6rem; border-radius:10px; border:1px solid var(--border);
-          background:var(--surface-2); cursor:pointer; text-align:center; transition:all 0.18s;
-        }
-        .font-option:hover { border-color:var(--border-hover); }
-        .font-option.selected { border-color:var(--accent-border); background:var(--accent-soft); color:var(--accent); }
-        .font-option-label { font-weight:700; color:var(--text-primary); }
-        .font-option.selected .font-option-label { color:var(--accent); }
-        .font-option-sub { font-size:0.62rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; margin-top:2px; }
-
-        /* Account info */
-        .account-row { display:flex; align-items:center; gap:12px; padding:0.85rem 0; border-bottom:1px solid var(--border); }
-        .account-row:last-child { border-bottom:none; }
-        .account-label { font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-muted); font-family:'JetBrains Mono',monospace; width:100px; flex-shrink:0; }
-        .account-value { font-size:0.82rem; font-weight:600; color:var(--text-primary); font-family:'JetBrains Mono',monospace; }
-
-        /* Save button */
-        .save-row { display:flex; align-items:center; justify-content:flex-end; gap:1rem; }
-        .save-confirm { display:flex; align-items:center; gap:7px; font-size:0.75rem; font-weight:600; color:var(--green); font-family:'JetBrains Mono',monospace; animation:fadeIn 0.3s ease; }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-        .save-confirm svg { width:14px; height:14px; }
+        @media(prefers-reduced-motion:reduce){.sp-saved,.sp-switch,.sp-switch i{transition:none;}}
       `}</style>
 
       <div className="sp-root">
         <div className="sp-inner">
 
-          {/* Header */}
-          <div className="sp-header">
-            <h1 className="sp-title">Settings</h1>
-            <p className="sp-subtitle">Manage your workspace preferences</p>
+          <div className="sp-head">
+            <div>
+              <h1 className="sp-title">Settings</h1>
+              <p className="sp-sub">Choose how the workspace looks and what you hear about.</p>
+            </div>
+            <span className={`sp-saved ${saved ? "show" : ""}`} role="status" aria-live="polite">
+              <Check size={14} /> Saved
+            </span>
           </div>
 
-          {/* ── APPEARANCE ── */}
-          <div className="sp-card">
-            <div className="section-label">Appearance</div>
+          {/* APPEARANCE */}
+          <section className="sp-card">
+            <h2 className="sp-card-t">Appearance</h2>
 
-            {/* Theme */}
-            <div style={{ marginBottom:"1.5rem" }}>
-              <div style={{ fontSize:"0.82rem", fontWeight:700, color:"var(--text-primary)", marginBottom:"4px" }}>Theme</div>
-              <div style={{ fontSize:"0.72rem", color:"var(--text-muted)", marginBottom:"0.85rem" }}>Choose how the workspace looks to you.</div>
-              <div className="theme-grid">
+            <div className="sp-group">
+              <div className="sp-gname">Theme</div>
+              <p className="sp-gdesc">Pick the look that is easiest on your eyes.</p>
+              <div className="sp-themes">
                 {([
-                  { key:"dark",  label:"Dark Mode",  sub:"Easy on the eyes",     previewClass:"theme-preview-dark",  dotColor:"#7c6af7" },
-                  { key:"light", label:"Light Mode",  sub:"Clean and bright",     previewClass:"theme-preview-light", dotColor:"#6355e8" },
-                ] as const).map(opt => (
-                  <div key={opt.key} className={`theme-option ${theme === opt.key ? "selected" : ""}`} onClick={() => applyTheme(opt.key)}>
-                    <div className={`theme-preview ${opt.previewClass}`}>
-                      <div className="theme-preview-dot" style={{ background: opt.dotColor }} />
-                    </div>
-                    <div>
-                      <div className="theme-label">{opt.label}</div>
-                      <div className="theme-sub">{opt.sub}</div>
-                    </div>
-                    <div className="theme-check">
-                      <svg viewBox="0 0 24 24" fill="none" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    </div>
-                  </div>
+                  { key: "light", label: "Light", sub: "Clean and bright", icon: <Sun size={16} />,  cls: "light" },
+                  { key: "dark",  label: "Dark",  sub: "Easy at night",    icon: <Moon size={16} />, cls: "dark" },
+                ] as const).map(o => (
+                  <button key={o.key} type="button" className={`sp-theme ${theme === o.key ? "on" : ""}`} onClick={() => chooseTheme(o.key)} aria-pressed={theme === o.key}>
+                    <span className={`sp-thumb ${o.cls}`}>{o.icon}</span>
+                    <span>
+                      <div className="sp-tname">{o.label}</div>
+                      <div className="sp-tsub">{o.sub}</div>
+                    </span>
+                    <span className="sp-tick"><Check size={12} strokeWidth={3} /></span>
+                  </button>
                 ))}
               </div>
             </div>
 
-            {/* Accent color */}
-            <div style={{ marginBottom:"1.5rem" }}>
-              <div style={{ fontSize:"0.82rem", fontWeight:700, color:"var(--text-primary)", marginBottom:"4px" }}>Accent Color</div>
-              <div style={{ fontSize:"0.72rem", color:"var(--text-muted)", marginBottom:"0.85rem" }}>Applied to buttons, active states, and highlights.</div>
-              <div className="accent-grid">
-                {ACCENT_OPTIONS.map(opt => {
-                  const color = theme === "dark" ? opt.dark : opt.light;
-                  return (
-                    <div key={opt.key} style={{ display:"flex", flexDirection:"column", alignItems:"center" }}>
-                      <div
-                        className={`accent-swatch ${accent === opt.key ? "selected" : ""}`}
-                        style={{ background: color, borderColor: accent === opt.key ? "var(--text-primary)" : "transparent" }}
-                        onClick={() => applyAccent(opt.key)}
-                      >
-                        {accent === opt.key && (
-                          <svg viewBox="0 0 24 24" fill="none" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        )}
-                      </div>
-                      <div className="accent-label">{opt.label}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Font size */}
-            <div style={{ marginBottom:"1.25rem" }}>
-              <div style={{ fontSize:"0.82rem", fontWeight:700, color:"var(--text-primary)", marginBottom:"4px" }}>Font Size</div>
-              <div style={{ fontSize:"0.72rem", color:"var(--text-muted)", marginBottom:"0.85rem" }}>Adjust text size across the workspace.</div>
-              <div className="font-grid">
-                {([
-                  { key:"small",  label:"Small",  sub:"13px" },
-                  { key:"medium", label:"Medium", sub:"14px" },
-                  { key:"large",  label:"Large",  sub:"16px" },
-                ] as const).map(opt => (
-                  <div key={opt.key} className={`font-option ${fontSize === opt.key ? "selected" : ""}`} onClick={() => applyFontSize(opt.key)}>
-                    <div className="font-option-label" style={{ fontSize: opt.sub }}>{opt.label}</div>
-                    <div className="font-option-sub">{opt.sub}</div>
-                  </div>
+            <div className="sp-group">
+              <div className="sp-gname">Accent colour</div>
+              <p className="sp-gdesc">Used for buttons, the active menu item and highlights.</p>
+              <div className="sp-accents">
+                {ACCENTS.map(o => (
+                  <button key={o.key} type="button" className={`sp-acc ${accent === o.key ? "on" : ""}`} onClick={() => chooseAccent(o.key)} aria-pressed={accent === o.key} aria-label={`${o.label} accent`}>
+                    <span className="sp-swatch" style={{ background: theme === "dark" ? o.dark : o.light }}>
+                      {accent === o.key && <Check size={18} strokeWidth={3} />}
+                    </span>
+                    <span>{o.label}</span>
+                  </button>
                 ))}
               </div>
             </div>
 
-            {/* Compact mode */}
-            <div className="setting-row">
-              <div className="setting-info">
-                <div className="setting-name">Compact Mode</div>
-                <div className="setting-desc">Reduce spacing and padding for a denser layout.</div>
-              </div>
-              <div className={`toggle-pill ${compactMode ? "on" : ""}`} onClick={() => applyCompact(!compactMode)}>
-                <div className="toggle-thumb" />
+            <div className="sp-group">
+              <div className="sp-gname">Text size</div>
+              <p className="sp-gdesc">Makes text larger or smaller across the workspace.</p>
+              <div className="sp-sizes">
+                {FONT_OPTIONS.map(o => (
+                  <button key={o.key} type="button" className={`sp-size ${fontSize === o.key ? "on" : ""}`} onClick={() => chooseFont(o.key)} aria-pressed={fontSize === o.key}>
+                    <b style={{ fontSize: o.px }}>{o.label}</b>
+                    <small>{o.sub}</small>
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
 
-          {/* ── ACCOUNT INFO ── */}
-          <div className="sp-card">
-            <div className="section-label">Account</div>
-            <div className="account-row">
-              <span className="account-label">Name</span>
-              <span className="account-value">{employeeName || "—"}</span>
+            <div className="sp-group">
+              <div className="sp-row">
+                <div>
+                  <div className="sp-rname">Compact layout</div>
+                  <div className="sp-rdesc">Tighter spacing so more fits on screen.</div>
+                </div>
+                <button type="button" role="switch" aria-checked={compact} aria-label="Compact layout" className="sp-switch" onClick={toggleCompact}><i /></button>
+              </div>
             </div>
-            <div className="account-row">
-              <span className="account-label">Employee ID</span>
-              <span className="account-value" style={{ color:"var(--accent)" }}>{employeeId || "—"}</span>
-            </div>
-            <div className="account-row">
-              <span className="account-label">Email</span>
-              <span className="account-value">{email || "—"}</span>
-            </div>
-            <div className="account-row">
-              <span className="account-label">Version</span>
-              <span className="account-value" style={{ color:"var(--text-muted)" }}>v2.0 · Malus Robotics</span>
-            </div>
-          </div>
+          </section>
 
-          {/* ── NOTIFICATIONS (placeholder) ── */}
-          <div className="sp-card">
-            <div className="section-label">Notifications</div>
-            <div className="setting-row">
-              <div className="setting-info">
-                <div className="setting-name">Leave Approval Alerts</div>
-                <div className="setting-desc">Get notified when your leave request is approved or rejected.</div>
-              </div>
-              <div className="toggle-pill on"><div className="toggle-thumb" /></div>
-            </div>
-            <div className="setting-row">
-              <div className="setting-info">
-                <div className="setting-name">Expense Status Updates</div>
-                <div className="setting-desc">Get notified when an expense claim is actioned.</div>
-              </div>
-              <div className="toggle-pill on"><div className="toggle-thumb" /></div>
-            </div>
-            <div className="setting-row">
-              <div className="setting-info">
-                <div className="setting-name">Weekly Summary Email</div>
-                <div className="setting-desc">Receive a weekly digest of your attendance and hours.</div>
-              </div>
-              <div className="toggle-pill"><div className="toggle-thumb" /></div>
-            </div>
-          </div>
+          {/* ACCOUNT */}
+          <section className="sp-card">
+            <h2 className="sp-card-t">Your account</h2>
+            <div className="sp-acct"><span className="sp-al">Name</span><span className="sp-av">{me.name || "Not available"}</span></div>
+            <div className="sp-acct"><span className="sp-al">Employee ID</span><span className="sp-av" style={{ color: "var(--accent)" }}>{me.employeeId || "Not available"}</span></div>
+            <div className="sp-acct"><span className="sp-al">Email</span><span className="sp-av">{me.email || "Not available"}</span></div>
+            <div className="sp-acct"><span className="sp-al">Version</span><span className="sp-av" style={{ color: "var(--text-muted)" }}>2.0</span></div>
+          </section>
 
-          {/* Save row */}
-          <div className="save-row">
-            {saved && (
-              <div className="save-confirm">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                Preferences saved
+          {/* NOTIFICATIONS */}
+          <section className="sp-card">
+            <h2 className="sp-card-t">Notifications</h2>
+            {([
+              { k: "leave",   name: "Leave decisions",  desc: "Tell me when a leave request is approved or rejected." },
+              { k: "expense", name: "Expense updates",  desc: "Tell me when an expense claim is approved or rejected." },
+              { k: "weekly",  name: "Weekly summary",   desc: "Send me a weekly digest of my attendance and hours." },
+            ] as const).map(n => (
+              <div className="sp-row" key={n.k}>
+                <div>
+                  <div className="sp-rname">{n.name}</div>
+                  <div className="sp-rdesc">{n.desc}</div>
+                </div>
+                <button type="button" role="switch" aria-checked={notif[n.k]} aria-label={n.name} className="sp-switch" onClick={() => toggleNotif(n.k)}><i /></button>
               </div>
-            )}
-            <button
-              onClick={() => flashSaved()}
-              style={{
-                padding:"0.8rem 2rem", borderRadius:"12px",
-                background:"var(--accent)", color:"#fff",
-                fontFamily:"'Syne',sans-serif", fontSize:"0.82rem", fontWeight:700,
-                border:"none", cursor:"pointer",
-                boxShadow:"0 0 24px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.15)",
-                transition:"all 0.2s",
-              }}
-              onMouseOver={e => (e.currentTarget.style.filter = "brightness(1.1)")}
-              onMouseOut={e  => (e.currentTarget.style.filter = "")}
-            >
-              Save Preferences
-            </button>
-          </div>
+            ))}
+            <p className="sp-note">These choices are saved on this device only for now. The bell in the sidebar still shows every alert.</p>
+          </section>
 
         </div>
       </div>
