@@ -1,0 +1,182 @@
+/* src/app/neumorphism.css
+   Soft-UI (neumorphism) layer for the whole workspace.
+
+   HOW IT WORKS
+   1. Tokens: one soft base colour for background AND cards, plus a light and a
+      dark shadow colour. Every page already reads var(--bg) / var(--surface) /
+      var(--shadow-card) / var(--border), so they pick the new look up with no
+      edits.
+   2. Shape rules: cards are raised, text fields are pressed in, buttons are
+      raised and sink when pressed, and the selected item in a group is pressed
+      in. These match by class name (card, kpi, btn, input...) so pages that
+      were never opened here are covered too.
+
+   Import it LAST in src/app/globals.css:   @import "./neumorphism.css";
+   Every selector starts with `html` so it wins over the per-page <style> blocks
+   without needing !important. To go back, delete that one import line. */
+
+/* ───────── 1. TOKENS ───────── */
+html:root,
+html[data-theme="light"]:root {
+  --bg: #E4E9F0;
+  --surface: #E4E9F0;
+  --surface-2: #DAE0E9;   /* pressed-in wells */
+  --surface-3: #D0D7E2;
+  --border: rgba(143, 157, 181, 0.3);        /* hairline dividers only */
+  --border-hover: rgba(143, 157, 181, 0.55);
+
+  --text-primary: #1D2535;
+  --text-secondary: #475269;
+  --text-muted: #5E6A82;
+
+  --topbar-bg: rgba(228, 233, 240, 0.88);
+  --modal-overlay: rgba(29, 37, 53, 0.4);
+
+  --neu-light: #FFFFFF;
+  --neu-dark: #B6C0D0;
+
+  --timer-bg: linear-gradient(145deg, #EBF0F7, #D8DFEA);
+  --timer-border: transparent;
+  --btn-out-bg: var(--surface);
+}
+
+html[data-theme="dark"]:root {
+  --bg: #1F232B;
+  --surface: #1F232B;
+  --surface-2: #191C22;
+  --surface-3: #14171C;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 255, 255, 0.14);
+
+  --text-primary: #E6E9F0;
+  --text-secondary: #A2ABBD;
+  --text-muted: #8691A5;
+
+  --topbar-bg: rgba(31, 35, 43, 0.88);
+  --modal-overlay: rgba(6, 8, 12, 0.6);
+
+  --neu-light: #2A303A;
+  --neu-dark: #13151A;
+
+  --timer-bg: linear-gradient(145deg, #242933, #1B1F26);
+  --timer-border: transparent;
+  --btn-out-bg: var(--surface);
+}
+
+/* shadow recipes (shared by both themes) */
+html:root {
+  --neu-raised:    9px 9px 18px var(--neu-dark), -9px -9px 18px var(--neu-light);
+  --neu-raised-sm: 5px 5px 11px var(--neu-dark), -5px -5px 11px var(--neu-light);
+  --neu-raised-xs: 3px 3px 6px var(--neu-dark), -3px -3px 6px var(--neu-light);
+  --neu-inset:     inset 6px 6px 12px var(--neu-dark), inset -6px -6px 12px var(--neu-light);
+  --neu-inset-sm:  inset 3px 3px 7px var(--neu-dark), inset -3px -3px 7px var(--neu-light);
+  /* names the existing pages already use */
+  --shadow-card: var(--neu-raised);
+  --shadow-pop: 12px 12px 28px var(--neu-dark), -8px -8px 24px var(--neu-light);
+}
+
+/* ───────── 2. SHAPES ───────── */
+
+/* raised surfaces: cards, stat tiles, timer */
+html [class*="card"]:where(:not([class*="card-"])),
+html [class*="kpi"]:where(:not([class*="kpi-"])),
+html .ws-timer,
+html .timer-card {
+  background: var(--surface);
+  border-color: transparent;
+  box-shadow: var(--neu-raised);
+}
+html [class*="kpi"]:where(:not([class*="kpi-"])) { box-shadow: var(--neu-raised-sm); }
+html .ws-timer, html .timer-card { background: var(--timer-bg); }
+
+/* selectable tiles inside a card are smaller */
+html .type-card { box-shadow: var(--neu-raised-sm); }
+
+/* floating menus and panels */
+html .ws-dd-menu, html .proj-dropdown, html .nb-panel {
+  background: var(--surface); border-color: transparent; box-shadow: var(--shadow-pop);
+}
+html .cp-panel { box-shadow: var(--shadow-pop); background: var(--surface); }
+html .cp-panel [class*="card"]:where(:not([class*="card-"])) { box-shadow: none; }
+
+/* sidebar and top bars: a soft cast shadow instead of a hard line */
+html .sidebar { border-right-color: transparent; box-shadow: 6px 0 18px color-mix(in srgb, var(--neu-dark) 75%, transparent); }
+html .mobile-bar, html .topbar { border-bottom-color: transparent; box-shadow: 0 5px 14px color-mix(in srgb, var(--neu-dark) 65%, transparent); }
+
+/* pressed-in fields (:where keeps these easy to override) */
+html input:where(:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="submit"]):not([type="button"])),
+html select,
+html textarea,
+html [class*="input"]:where(:not([class*="input-"])),
+html [class*="trigger"]:where(:not(.nb-trigger):not(.cp-trigger):not([class*="trigger-"])),
+html .ws-ta {
+  background: var(--surface-2);
+  border-color: transparent;
+  box-shadow: var(--neu-inset-sm);
+}
+html input:focus-visible, html select:focus-visible, html textarea:focus-visible,
+html [class*="input"]:where(:not([class*="input-"])):focus, html [class*="trigger"]:where(:not([class*="trigger-"])):focus-visible, html .ws-ta:focus {
+  box-shadow: var(--neu-inset-sm), 0 0 0 2px var(--accent-border);
+  border-color: transparent;
+}
+/* fields that live inside a menu are transparent on purpose */
+html .ws-dd-search input, html .proj-search input, html .proj-search-input, html [class*="search"] input {
+  background: transparent; box-shadow: none;
+}
+
+/* raised buttons */
+html .ws-btn, html .btn, html .view-all-btn, html .ws-view-all, html .more-strip, html .ws-more,
+html .logout-btn, html .nb-trigger, html .cp-trigger, html .mobile-menu-btn, html .sidebar-close,
+html .lc-btn, html .submit-btn, html .sp-theme, html .sp-size,
+html button:where([class*="btn"]) {
+  border-color: transparent;
+  box-shadow: var(--neu-raised-sm);
+  transition: box-shadow .18s ease, background-color .18s, color .18s;
+}
+html .ws-btn:not(:disabled):active, html .btn:not(:disabled):active, html .view-all-btn:active,
+html .ws-view-all:active, html .more-strip:active, html .ws-more:active, html .logout-btn:active,
+html .nb-trigger:active, html .cp-trigger:active, html .mobile-menu-btn:active,
+html .lc-btn:active, html .submit-btn:active, html button:where([class*="btn"]):not(:disabled):active {
+  box-shadow: var(--neu-inset-sm);
+}
+html .ws-btn:disabled, html .btn:disabled, html button:where([class*="btn"]):disabled { box-shadow: none; }
+html .ws-btn-out, html .btn-out, html .logout-btn, html .view-all-btn, html .ws-view-all,
+html .lc-btn, html .nb-trigger, html .cp-trigger, html .mobile-menu-btn, html .sidebar-close { background: var(--surface); }
+html .ws-view-all:hover, html .view-all-btn:hover { background: var(--surface); color: var(--accent); }
+
+/* sidebar links: flat, lift on hover, pressed in when active */
+html .nav-link { border-color: transparent; }
+html .nav-link:hover:not(.active) { background: transparent; box-shadow: var(--neu-raised-xs); }
+html .nav-link.active { background: var(--surface); border-color: transparent; box-shadow: var(--neu-inset-sm); }
+
+/* the selected option in a group is pressed in */
+html [aria-pressed="true"], html .sp-theme.on, html .sp-size.on, html .type-card.active,
+html .proj-item.selected, html .ws-dd-item.sel, html .theme-option.selected, html .font-option.selected {
+  background: var(--surface);
+  box-shadow: var(--neu-inset-sm);
+}
+html .sp-acc .sp-swatch { box-shadow: var(--neu-raised-xs); outline-color: transparent; }
+html .sp-acc.on .sp-swatch { box-shadow: var(--neu-inset-sm); outline-color: var(--accent); }
+
+/* switches: pressed-in track, raised knob */
+html .sp-switch, html .toggle-pill { background: var(--surface-2); border-color: transparent; box-shadow: var(--neu-inset-sm); }
+html .sp-switch[aria-checked="true"], html .toggle-pill.on { background: var(--accent); box-shadow: inset 2px 2px 5px rgba(0,0,0,0.28); }
+html .sp-switch i, html .toggle-thumb { box-shadow: 2px 2px 5px var(--neu-dark), -1px -1px 4px var(--neu-light); }
+
+/* calendar days */
+html .lc-day:hover { box-shadow: var(--neu-raised-xs); background: var(--surface); }
+html .lc-day.selected { background: var(--surface); box-shadow: var(--neu-inset-sm); }
+html .lc-day.today { box-shadow: var(--neu-raised-xs); }
+html .lc-day.off { background: var(--surface-2); box-shadow: var(--neu-inset-sm); }
+html .lc-info { box-shadow: var(--neu-inset-sm); border-color: transparent; }
+
+/* small status chips and rows that sit inside cards stay flat but softly sunk */
+html .ws-ann, html .ann-item { border-color: transparent; box-shadow: var(--neu-inset-sm); background: var(--surface-2); }
+html .ws-date, html .history-date-badge { background: var(--surface); box-shadow: var(--neu-raised-xs); border-color: transparent; }
+html .ws-item:hover, html .history-item:hover { background: var(--surface-2); border-color: transparent; box-shadow: var(--neu-inset-sm); }
+
+/* contrast: soft edges are easy to miss, so draw a real edge for people who ask for more contrast */
+@media (prefers-contrast: more) {
+  html [class*="card"]:where(:not([class*="card-"])), html [class*="kpi"]:where(:not([class*="kpi-"])), html input, html select, html textarea,
+  html button:where([class*="btn"]) { border-color: var(--border-hover); }
+}
