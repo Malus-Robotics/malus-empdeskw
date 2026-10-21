@@ -7,6 +7,7 @@ import {
   ACCENTS, AccentKey, FontSize, Theme,
   applyAccent, applyCompact, applyFontSize, readPrefs,
 } from "@/lib/prefs";
+import InstallPrompt from "@/components/InstallPrompt";
 
 const FONT_OPTIONS: { key: FontSize; label: string; sub: string; px: string }[] = [
   { key: "small",  label: "Small",   sub: "Smaller text", px: "0.85rem" },
@@ -216,6 +217,15 @@ export default function SettingsPage() {
                 <button type="button" role="switch" aria-checked={compact} aria-label="Compact layout" className="sp-switch" onClick={toggleCompact}><i /></button>
               </div>
             </div>
+          </section>
+
+          {/* INSTALL APP */}
+          <section className="sp-card">
+            <h2 className="sp-card-t">Install app</h2>
+            <p className="sp-gdesc" style={{ marginTop: 0 }}>
+              Add Employee Desk to your home screen so it opens like a normal app, full screen and one tap away.
+            </p>
+            <InstallPrompt />
           </section>
 
           {/* ACCOUNT */}
