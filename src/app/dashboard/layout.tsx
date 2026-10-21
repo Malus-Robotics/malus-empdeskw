@@ -302,7 +302,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="mobile-bar">
             <button className="mobile-menu-btn" onClick={() => setMenuOpen(true)} aria-label="Open menu"><Menu /></button>
             <Image
-              src="/maluslogo.png"
+              src="/maluslogo1.png"
               alt="MalÜs"
               width={747}
               height={334}
