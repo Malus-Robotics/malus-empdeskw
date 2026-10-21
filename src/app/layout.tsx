@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import { Toaster } from "react-hot-toast";
+import RegisterSW from "@/components/RegisterSW";
 import "./globals.css";
 
 // Same family as the PM tool (swap here if its ui-kit uses a different one)
@@ -13,6 +14,14 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "Malus Robotics — Employee Portal",
   description: "Employee workspace for Malus Robotics",
+  applicationName: "Employee Desk",
+  appleWebApp: { capable: true, title: "Employee Desk", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#4f46e5",
+  viewportFit: "cover", // pair with env(safe-area-inset-*) padding on sidebar / bottom nav
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -27,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {children}
+        <RegisterSW />
         <Toaster
           position="top-right"
           toastOptions={{
